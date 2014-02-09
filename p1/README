@@ -1,0 +1,28 @@
+
+DOCUMENTATION
+
+Notes : 
+  
+  check if the second argv is a valid integer;
+
+  check if the number of arguments is legal;
+
+  define a struct called "fileProperty" to store file name and number of occurrences;
+
+  malloc a string for keyword of unknowned length;
+
+  use strstr to count occurrences for each input file;
+
+  check if there is a specific output;
+
+  check if output and input are different;
+
+  use mergesort for consideration of breaking a tie;
+
+  write results to output | stdout;
+
+DONE
+
+Daohang Shi 
+
+Fri Jan 24 18:24:21 CST 2014
