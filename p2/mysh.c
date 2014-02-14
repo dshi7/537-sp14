@@ -79,16 +79,45 @@ int isBuiltInCommand(char**mysh_argv) {
     || !strcmp(mysh_argv[0],"quit");
 }
 
+/*  function to execute a single command
+ *  INPUT : string of cmd
+ *  OUTPUT : pid of the created child process 
+ *  */
+pid_t executeSingleCommand(char* sgl_cmd) {
+
+  int status = 0;
+  char*sgl_cmd_argv[512];
+  parseSingleCommand(sgl_cmd, sgl_cmd_argv);
+
+  pid_t child_pid = fork();
+  if ( child_pid==-1 ) {
+    /* fork error */
+    perror("Cannot create a child process\n");
+    exit(EXIT_FAILURE);
+  }
+  else if ( child_pid==0 ) {
+    /* execute the command line by calling execvp */
+    sleep(5);
+    execvp(sgl_cmd_argv[0], sgl_cmd_argv);
+    exit(EXIT_SUCCESS);
+  }
+  else {
+    /*  wait for the child process to terminate in parent process*/
+    fprintf(stdout, "waiting for child process to terminate : %s\n", sgl_cmd);
+    return waitpid(child_pid,&status,0);
+  }
+}
+
+
 int main(int argc, char *argv[]) {
 
   char  cmd_line[512];
-  char  sgl_cmd[512];
   char  cwd[512];
   char  *mysh_argv[512];
-  char  *sgl_cmd_argv[512];
+//  char  *sgl_cmd_argv[512];
   int   mode_code;  //  indicate the mode of multiple commands
   int   cmd_num = 0;
-  int   status = 0;
+//  int   status = 0;
   pid_t child_pid=1;
 
   while (1) {
@@ -113,39 +142,23 @@ int main(int argc, char *argv[]) {
     if(mode_code==1) {
       /* split sequantial commands */
       parseSequentialCommands(cmd_line, mysh_argv);
-      cmd_num = 0;
+      while(mysh_argv[cmd_num])  {
 
-      while(mysh_argv[cmd_num]) {
+        child_pid = executeSingleCommand(*(mysh_argv+(cmd_num++)));
+        fprintf(stdout, "%d\n", child_pid);
 
-        strcpy(sgl_cmd, *(mysh_argv+cmd_num));
-        parseSingleCommand(sgl_cmd, sgl_cmd_argv);
-
-        child_pid = fork();
-        if ( child_pid==-1 ) {
-          /* fork error */
-          perror("Cannot create a child process\n");
-          exit(EXIT_FAILURE);
-        }
-        else if ( child_pid==0 ) {
-          /* execute the command line by calling execvp */
-          execvp(sgl_cmd_argv[0], sgl_cmd_argv);
-          exit(EXIT_SUCCESS);
-        }
-        else {
-          /*  wait for the child process to terminate in parent process*/
-          waitpid(child_pid,&status,0);
-        }
-        ++ cmd_num;
       }
+    }
+
+    if(mode_code==2) {
+      /* split parallel commands */
+      parseParallelCommands(cmd_line, mysh_argv);
+//      while(mysh_argv[cmd_num]) 
+//        executeSingleCommand(*(mysh_argv+(cmd_num++)));
     }
 
     /* parse the command */
     parseSingleCommand(cmd_line, mysh_argv);
-
-    //    char  single_cmd[512];
-    int i=0;
-    for (; mysh_argv[i]!=NULL; i++)
-      printf("%s\n", mysh_argv[i]);
 
     exit(EXIT_SUCCESS);
 
