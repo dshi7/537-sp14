@@ -32,6 +32,13 @@ typedef struct  process {
   int status;
 } process;
 
+typedef struct  job {
+  struct job *next;
+  char  *command;
+  process *first_process;
+  pid_t pgid;
+} job;
+
 void  echoPrompt() {
   fprintf(stdout, "537sh> ");
 }
@@ -41,32 +48,48 @@ void  occurError() {
   exit(0);
 }
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
 
-  char  command_line[512];
-  pid_t pid;
-  int status = 0;
+  char  cmd_line[512];
+  int   status = 0;
+  pid_t child_pid=1;
 
-  /*  init the shell  */
-  echoPrompt();
+  while (1) {
 
-  while(fgets(command_line, 512, stdin)) {
+    wait(&status);
+
+    /* print the shell prompt */
+    echoPrompt();
+
+    /* read the command */
+    fgets(cmd_line, 512, stdin);
+
     /* remove the trailing newline char from fget() input */
-    strtok( command_line, "\n");
+    strtok( cmd_line, "\n");
 
     /* check if the input command is "quit" */
-    if(!strcmp(command_line, "quit")){
-      exit(0);
+    if(!strcmp(cmd_line, "quit")){
+      exit(EXIT_SUCCESS);
     }
 
-    /* create child process */
-    pid = fork();
-    if(pid == 0){
-      execvp("/bin/ls", "ls", "-al", "*.c", NULL);
-      break;
-    }
+    /* parse the command */
+    //cmd = parseCommandLine(cmd_line);
 
-    echoPrompt();
+    child_pid = fork();
+    if ( child_pid==-1 ) {
+      /* fork error */
+      perror("Cannot create a child process\n");
+      exit(EXIT_FAILURE);
+    }
+    else if ( child_pid==0 ) {
+      /* execute the command line by calling execvp */
+      fprintf(stdout,"helloworld\n");
+      fprintf(stdout,"create a child %d under parent %d\n", getpid(), getppid());
+      //execute_basic_shell_cmd(cmd);
+      exit(EXIT_SUCCESS);
+    }
+    else {
+    }
   }
 
   return  0;
