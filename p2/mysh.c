@@ -25,7 +25,7 @@
 
 typedef struct  process {
   struct process *next;
-  char **argv;
+  char **mysh_argv;
   pid_t pid;
   char  completed;
   char  stopped;
@@ -48,9 +48,27 @@ void  occurError() {
   exit(0);
 }
 
+int isWhiteSpace(char ch) {
+  /* check if ch is tab, space */
+  return ch==9 || ch==32;
+}
+
+int isEndOfCmd(char ch) {
+  /* check if ch is nul, ";", "|", "+" */
+  return ch==0 || ch==59 || ch==124 || ch==43;
+}
+
+/* parse a single command */
+void  parseCommand(char* cmd_line, char**mysh_argv) {
+  *mysh_argv = strtok(cmd_line," \t");
+  while (*mysh_argv!=NULL) 
+    *(++mysh_argv)=strtok(NULL," \t");
+}
+
 int main(int argc, char *argv[]) {
 
   char  cmd_line[512];
+  char  *mysh_argv[512];
   int   status = 0;
   pid_t child_pid=1;
 
@@ -73,7 +91,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* parse the command */
-    //cmd = parseCommandLine(cmd_line);
+    parseCommand(cmd_line, mysh_argv);
 
     child_pid = fork();
     if ( child_pid==-1 ) {
@@ -83,9 +101,8 @@ int main(int argc, char *argv[]) {
     }
     else if ( child_pid==0 ) {
       /* execute the command line by calling execvp */
-      fprintf(stdout,"helloworld\n");
-      fprintf(stdout,"create a child %d under parent %d\n", getpid(), getppid());
       //execute_basic_shell_cmd(cmd);
+      execvp(mysh_argv[0], mysh_argv);
       exit(EXIT_SUCCESS);
     }
     else {
