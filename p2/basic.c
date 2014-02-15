@@ -17,7 +17,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include"basic.h"
-#include"parser.h"
+
+
+/* print the shell prompt and wait for stdin */
+void  echoPrompt() {
+  fprintf(stdout, "537sh> ");
+}
+
+
+/* print the required error message */
+void  printErrorMsg() {
+  fprintf(stderr, "An error has occured\n");
+  exit(EXIT_FAILURE);
+}
 
 
 /* get the mode code */
@@ -38,31 +50,7 @@ int getCommandMode(char* cmd_line) {
 /* check if this is a built-in command  */
 int isBuiltInCommand(char**mysh_argv) {
   return !strcmp(mysh_argv[0],"cd") 
-    || !strcmp(mysh_argv[0],"pwd") 
-    || !strcmp(mysh_argv[0],"quit");
-}
-
-
-/* execute a single command */ 
-void  executeSingleCommand(pid_t *child_pid, char* sgl_cmd) {
-
-  char*sgl_cmd_argv[512];
-  parseSingleCommand(sgl_cmd, sgl_cmd_argv);
-
-
-  *child_pid = fork();
-
-  if ( *child_pid==-1 ) {
-    /* fork error */
-    perror("Cannot create a child process\n");
-    exit(EXIT_FAILURE);
-  }
-  else if ( *child_pid==0 ) {
-    /* execute the command line by calling execvp */
-    sleep(5);
-    execvp(sgl_cmd_argv[0], sgl_cmd_argv);
-    exit(EXIT_SUCCESS);
-  }
+    || !strcmp(mysh_argv[0],"pwd") ;
 }
 
 
