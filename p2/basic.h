@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 
@@ -22,6 +23,10 @@ int getCommandMode(char* cmd_line);
 
 /* check if this is a built-in command  */
 int isBuiltInCommand(char**mysh_argv); 
+
+
+/* execute a single command */ 
+void  executeSingleCommand(char *def_out, pid_t *child_pid, char** sgl_cmd_argv); 
 
 
 #endif

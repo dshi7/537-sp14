@@ -15,8 +15,7 @@ void  parseParallelCommands(char* cmd_line, char**mysh_argv);
 void  parseSingleCommand(char* cmd_line, char**mysh_argv);
 
 
-/* execute a single command */ 
-void  executeSingleCommand(pid_t *child_pid, char** sgl_cmd_argv); 
-
+/* parse the file redirection */
+void  parseFileDirection(char* cmd_line, char**file_redir_argv);
 
 #endif  
