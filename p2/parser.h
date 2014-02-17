@@ -18,4 +18,7 @@ void  parseSingleCommand(char* cmd_line, char**mysh_argv);
 /* parse the file redirection */
 void  parseFileDirection(char* cmd_line, char**file_redir_argv);
 
+/* parse pipe */
+int   parsePipe(char* cmd_line, char**mysh_argv); 
+
 #endif  

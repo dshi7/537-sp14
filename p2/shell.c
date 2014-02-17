@@ -25,17 +25,17 @@
 
 #include "basic.h"
 #include "parser.h"
+#include "single.h"
 
 int main(int argc, char *argv[]) {
 
   char  cmd_line[512];
   char  *mysh_argv[512];
-  char  *sgl_cmd_argv[512];
-  char  *file_redir_argv[512];
   int   mode_code;  //  indicate the mode of multiple commands
   int   status = 0;
   pid_t child_pid[512];
   int   i;
+
 
   while (1) {
 
@@ -68,28 +68,9 @@ int main(int argc, char *argv[]) {
       i = 0;
 
       while(mysh_argv[i])  {
-        /* 
-         * here each mysh_argv[i] is a single command 
-         * while there still might contain additional spaces
-         * */
-
-        /* parse the file redirection */
-        parseFileDirection(*(mysh_argv+i), file_redir_argv);
-
-        if(file_redir_argv[2]!=NULL) {
-          /* error : only one output file is allowed */
-          printErrorMsg();
-        }
-
-        /* parse the single command */
-        parseSingleCommand(file_redir_argv[0], sgl_cmd_argv);
-
-        /* exit the parent process if this is quit command */
-        if(!strcmp(sgl_cmd_argv[0], "quit") && !sgl_cmd_argv[1]) 
-          exit(EXIT_SUCCESS);
 
         /* execute multiple commands in sequential */
-        executeSingleCommand(file_redir_argv[1], child_pid+i, sgl_cmd_argv);
+        executeSingleCommand(child_pid+i, mysh_argv[i]);
 
         /* wait the current child process to terminate
          * in the parent process */
@@ -106,15 +87,8 @@ int main(int argc, char *argv[]) {
       i = 0;
       while(mysh_argv[i])  {
 
-        /* parse the single command */
-        parseSingleCommand(*(mysh_argv+i), sgl_cmd_argv);
-
-        /* exit the parent process if this is quit command */
-        if(!strcmp(sgl_cmd_argv[0], "quit") && !sgl_cmd_argv[1]) 
-          printErrorMsg();
-
         /* execute multiple commands in parallel */
-//        executeSingleCommand(file_descriptor,child_pid+i, sgl_cmd_argv);
+        executeSingleCommand(child_pid+i, mysh_argv[i]);
         ++i;
       }
 

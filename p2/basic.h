@@ -25,8 +25,4 @@ int getCommandMode(char* cmd_line);
 int isBuiltInCommand(char**mysh_argv); 
 
 
-/* execute a single command */ 
-void  executeSingleCommand(char *def_out, pid_t *child_pid, char** sgl_cmd_argv); 
-
-
 #endif

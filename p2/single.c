@@ -19,14 +19,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes, char* cmd_line)  {
-  //void  executeAtomicCommand(pid_t* child_pid, int* read_filedes, int* write_filedes, char* cmd_line, int prev_pipe_exist, int* prev_pipe_wr, int next_pipe_exist, int* next_pipe_rd ) {
+void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes, char* cmd_line, int prev_pipe_exist, int* prev_pipe_fd, int next_pipe_exist, int* next_pipe_fd) {
 
   char* sgl_cmd_argv[512];
   /* must be a non-built-in command */
-
-  /* parse the single command */
-  parseSingleCommand(cmd_line, sgl_cmd_argv);
 
   *child_pid = fork();
 
@@ -34,9 +30,24 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
 
     /* in the child process */
 
-    dup2(read_filedes, STDIN_FILENO);
+    if(prev_pipe_exist) {
+      close(*(prev_pipe_fd+PIPE_WR_END));
+      dup2(*(prev_pipe_fd+PIPE_RD_END), STDIN_FILENO);
+      close(*(prev_pipe_fd+PIPE_RD_END));
+    }
+    else
+      dup2(read_filedes, STDIN_FILENO);
 
-    dup2(write_filedes, STDOUT_FILENO);
+    if(next_pipe_exist) {
+      close(*(next_pipe_fd+PIPE_RD_END));
+      dup2(*(next_pipe_fd+PIPE_WR_END), STDOUT_FILENO);
+      close(*(next_pipe_fd+PIPE_WR_END));
+    }
+    else
+      dup2(write_filedes, STDOUT_FILENO);
+
+    /* parse the single command */
+    parseSingleCommand(cmd_line, sgl_cmd_argv);
 
 
     /* if false
@@ -45,7 +56,8 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
 
 
     /* kill the child process */
-    _exit(EXIT_SUCCESS);
+    _exit(EXIT_FAILURE);
+
   }
   else if(*child_pid==-1) {
 
@@ -69,7 +81,9 @@ void  executeSingleCommand(pid_t* child_pid, char* cmd_line) {
   //  char  cwd[512];
   int   redir_fd = -1;
   /* used for pipe */
+  int   status = 0;
   int   pipe_num;
+  pid_t pipe_pid[512];
   int   pipe_fd[512*2];        
 
   /* parse the file redirection */
@@ -103,53 +117,31 @@ void  executeSingleCommand(pid_t* child_pid, char* cmd_line) {
 
     /* create (pipe_num+1) different pipes */
     for(j=0; j<pipe_num; j++) 
-      if (pipe(pipe_fd+(j<<1))==-1) 
+      if (pipe(pipe_fd+2*j)==-1) 
         exit(EXIT_FAILURE);
 
     /* execute all the atomic commands */
     for(j=0; j<=pipe_num; j++) {
 
-      if( fork()==0 ) {
+      executeAtomicCommand(pipe_pid+j, STDIN_FILENO, redir_fd==-1 ? STDOUT_FILENO : redir_fd, pipe_argv[0], 
+          j!=0, (j!=0)?(pipe_fd+2*(j-1)):NULL, 
+          j!=pipe_num, (j!=pipe_num)?(pipe_fd+2*j):NULL);
 
-        char* sgl_cmd_argv[512];
-        /* control the previous pipe */
-        if(j!=0) {
-          close(pipe_fd[2*j-1]);
-          dup2(pipe_fd[2*j-2], STDIN_FILENO);
-          close(pipe_fd[2*j-2]);
-        }
-
-        /* control the next pipe */
-        if(j!=pipe_num) {
-          close(pipe_fd[2*j+0]);
-          dup2(pipe_fd[2*j+1], STDOUT_FILENO);
-          close(pipe_fd[2*j+1]);
-        }
-
-        /* parse the single command */
-        parseSingleCommand(pipe_argv[j], sgl_cmd_argv);
-
-        /* execute the command */
-        execvp(sgl_cmd_argv[0], sgl_cmd_argv);
-
-        _exit(EXIT_FAILURE);
-
-      }
     }
 
     for(j=0; j<pipe_num; j++) {
-      close(pipe_fd[2*j+0]);
+      close(pipe_fd[2*j]);
       close(pipe_fd[2*j+1]);
     }
 
     for(j=0; j<=pipe_num; j++)
-      wait(NULL);
+      waitpid(pipe_pid[j], &status, 0);
 
 
   }
   else {
 
-    executeAtomicCommand(child_pid, STDIN_FILENO, redir_fd==-1 ? STDOUT_FILENO : redir_fd, file_redir_argv[0]);
+    executeAtomicCommand(child_pid, STDIN_FILENO, redir_fd==-1 ? STDOUT_FILENO : redir_fd, file_redir_argv[0], 0, NULL, 0, NULL);
 
   }
 }
