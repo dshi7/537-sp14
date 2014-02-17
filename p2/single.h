@@ -13,7 +13,7 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
 
 
 /* execute a single command */ 
-void  executeSingleCommand(pid_t* child_pid, char* cmd_line);
+void  executeSingleJob(pid_t* child_pid, char* cmd_line);
 
 
 #endif
