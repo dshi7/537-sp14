@@ -21,8 +21,8 @@ void  printErrorMsg();
 int getCommandMode(char* cmd_line); 
 
 
-/* check if this is a built-in command  */
-int isBuiltInCommand(char**mysh_argv); 
+/* check if it is a built in command */
+int isBuiltInCommand(char** sgl_cmd_argv);
 
 
 #endif

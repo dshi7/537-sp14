@@ -27,26 +27,34 @@
 #include "parser.h"
 #include "single.h"
 
-int main(int argc, char *argv[]) {
 
-  char  cmd_line[512];
-  char  *mysh_argv[512];
+void executeCurrentLine(char* cmd_line) {  
+
   int   mode_code;  //  indicate the mode of multiple commands
   int   status = 0;
-  pid_t child_pid[512];
   int   i;
+  pid_t child_pid[512];
+  char* mysh_argv[512];
+  char  file_line[512];
 
+  FILE *fp;
 
-  while (1) {
+  parseSingleCommand(cmd_line, mysh_argv);
 
-    /* print the shell prompt */
-    echoPrompt();
+  /* check batch mode */
+  if(!strcmp(mysh_argv[0], "mysh")) {
+    if(mysh_argv[2]!=NULL)
+      printErrorMsg();
+    fp = fopen(mysh_argv[1], "r");
+    if(fp==NULL)
+      printErrorMsg();
 
-    /* read the command */
-    fgets(cmd_line, 512, stdin);
-
-    /* remove the trailing newline char from fget() input */
-    strtok( cmd_line, "\n");
+    while(fgets(file_line, 512, fp)!=NULL) {
+      printf("%s", file_line);
+      executeCurrentLine(file_line);
+    }
+  }
+  else {
 
     /* check the command line mode */
     mode_code = getCommandMode(cmd_line);
@@ -70,7 +78,7 @@ int main(int argc, char *argv[]) {
       while(mysh_argv[i])  {
 
         /* execute multiple commands in sequential */
-        executeSingleCommand(child_pid+i, mysh_argv[i]);
+        executeSingleJob(child_pid+i, mysh_argv[i]);
 
         /* wait the current child process to terminate
          * in the parent process */
@@ -88,7 +96,7 @@ int main(int argc, char *argv[]) {
       while(mysh_argv[i])  {
 
         /* execute multiple commands in parallel */
-        executeSingleCommand(child_pid+i, mysh_argv[i]);
+        executeSingleJob(child_pid+i, mysh_argv[i]);
         ++i;
       }
 
@@ -107,7 +115,42 @@ int main(int argc, char *argv[]) {
     }
     else
       exit(EXIT_FAILURE);
-      
+  }
+
+}
+
+
+int main(int argc, char *argv[]) {
+
+  char  cmd_line[512];
+
+  /* tmp */
+  //  if (fork()==0) {
+  //    chdir("/tmp");
+  ////    system("pwd");
+  //    _exit(EXIT_FAILURE);
+  //  }
+  //  wait(NULL);
+  //
+  //  chdir("/tmp");
+  //  system("pwd");
+  //  exit(0);
+
+  while (1) {
+
+    /* print the shell prompt */
+    echoPrompt();
+
+    /* read the command */
+    fgets(cmd_line, 512, stdin);
+
+    /* remove the trailing newline char from fget() input */
+    strtok( cmd_line, "\n");
+
+    /* check if in batch mode */
+
+    executeCurrentLine(cmd_line);
+
 
   }
 

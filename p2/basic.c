@@ -46,10 +46,15 @@ int getCommandMode(char* cmd_line) {
 }
 
 
-/* check if this is a built-in command  */
-int isBuiltInCommand(char**mysh_argv) {
-  return !strcmp(mysh_argv[0],"cd") 
-    || !strcmp(mysh_argv[0],"pwd") ;
+/* check if it is a built in command */
+int isBuiltInCommand(char** sgl_cmd_argv) {
+  
+  if(!strcmp(sgl_cmd_argv[0],"pwd") && sgl_cmd_argv[1]==NULL)
+    return 1;
+
+  if(!strcmp(sgl_cmd_argv[0],"cd"))
+    return 1;
+
+  return 0;
+
 }
-
-

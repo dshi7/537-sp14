@@ -22,6 +22,7 @@
 void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes, char* cmd_line, int prev_pipe_exist, int* prev_pipe_fd, int next_pipe_exist, int* next_pipe_fd) {
 
   char* sgl_cmd_argv[512];
+//  char  cwd[512];
 
   *child_pid = fork();
 
@@ -73,6 +74,7 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
  * each job may include pipe or file redirection */
 void  executeSingleJob(pid_t* child_pid, char* cmd_line) {
 
+
   /* 
    * char *cmd_line is a single command
    *  there still might contain additional spaces
@@ -89,6 +91,8 @@ void  executeSingleJob(pid_t* child_pid, char* cmd_line) {
   int   pipe_num;
   pid_t pipe_pid[512];
   int   pipe_fd[512*2];        
+
+
 
   /* parse the file redirection */
   parseFileDirection(cmd_line, file_redir_argv);

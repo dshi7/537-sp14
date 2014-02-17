@@ -54,10 +54,7 @@ void  parseFileDirection(char* cmd_line, char**file_redir_argv) {
 }
 
 
-/* parse pipe 
- *  return the number of pipes
- *  return 0 if there is no pipe
- *  */
+/* parse pipe */
 int   parsePipe(char* cmd_line, char**pipe_argv) {
 
   int pipe_num = -1;
