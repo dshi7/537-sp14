@@ -37,15 +37,23 @@ void executeCurrentLine(char* cmd_line) {
   char* mysh_argv[512];
   char  file_line[512];
 
+  /* strtok will make change on cmd_line, so make a copy */
+  char  cmd_line2[512];
+  strcpy(cmd_line2, cmd_line);
+
   FILE *fp;
 
   parseSingleCommand(cmd_line, mysh_argv);
 
   /* check batch mode */
   if(!strcmp(mysh_argv[0], "mysh")) {
+
+
     if(mysh_argv[2]!=NULL)
       printErrorMsg();
+
     fp = fopen(mysh_argv[1], "r");
+
     if(fp==NULL)
       printErrorMsg();
 
@@ -57,7 +65,8 @@ void executeCurrentLine(char* cmd_line) {
   else {
 
     /* check the command line mode */
-    mode_code = getCommandMode(cmd_line);
+    mode_code = getCommandMode(cmd_line2);
+
 
     /* int mode_code : 
      *    indicate the executing mode of the input command line
@@ -71,7 +80,7 @@ void executeCurrentLine(char* cmd_line) {
     if(mode_code<=1) {
 
       /* parse the multiple commands */
-      parseSequentialCommands(cmd_line, mysh_argv);
+      parseSequentialCommands(cmd_line2, mysh_argv);
 
       i = 0;
 
@@ -124,18 +133,6 @@ int main(int argc, char *argv[]) {
 
   char  cmd_line[512];
 
-  /* tmp */
-  //  if (fork()==0) {
-  //    chdir("/tmp");
-  ////    system("pwd");
-  //    _exit(EXIT_FAILURE);
-  //  }
-  //  wait(NULL);
-  //
-  //  chdir("/tmp");
-  //  system("pwd");
-  //  exit(0);
-
   while (1) {
 
     /* print the shell prompt */
@@ -150,7 +147,6 @@ int main(int argc, char *argv[]) {
     /* check if in batch mode */
 
     executeCurrentLine(cmd_line);
-
 
   }
 

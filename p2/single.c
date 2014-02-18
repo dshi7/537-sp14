@@ -21,51 +21,98 @@
 
 void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes, char* cmd_line, int prev_pipe_exist, int* prev_pipe_fd, int next_pipe_exist, int* next_pipe_fd) {
 
+
   char* sgl_cmd_argv[512];
-//  char  cwd[512];
+  char  cmd_line2[512];
+  char  cwd[512];
+  strcpy(cmd_line2, cmd_line);
 
-  *child_pid = fork();
+  parseSingleCommand(cmd_line, sgl_cmd_argv);
 
-  if(*child_pid==0) {
+  if (isBuiltInCommand(sgl_cmd_argv)) {
 
-    /* in the child process */
-
-    if(prev_pipe_exist) {
-
-      close(*(prev_pipe_fd+PIPE_WR_END));
-      dup2(*(prev_pipe_fd+PIPE_RD_END), STDIN_FILENO);
-      close(*(prev_pipe_fd+PIPE_RD_END));
-
+    /* quit */
+    if(!strcmp(sgl_cmd_argv[0], "quit")) {
+      if ( sgl_cmd_argv[1]==NULL)
+        exit(EXIT_SUCCESS);
+      else
+        printErrorMsg();
     }
 
-    if(next_pipe_exist) {
-
-      close(*(next_pipe_fd+PIPE_RD_END));
-      dup2(*(next_pipe_fd+PIPE_WR_END), STDOUT_FILENO);
-      close(*(next_pipe_fd+PIPE_WR_END));
-
+    /* pwd */
+    if(!strcmp(sgl_cmd_argv[0], "pwd")) {
+      if(sgl_cmd_argv[1]==NULL) {
+        if(getcwd(cwd, sizeof(cwd))!=NULL)
+          fprintf(stdout, "%s\n", cwd);
+        else
+          printErrorMsg();
+      }
+      else
+        printErrorMsg();
     }
 
-    else if ( write_filedes!=-1) {
-      dup2(write_filedes, STDOUT_FILENO);
+    /* cd */
+    if(!strcmp(sgl_cmd_argv[0], "cd")) {
+      if(sgl_cmd_argv[1]!=NULL && sgl_cmd_argv[2]==NULL) {
+        if(chdir(sgl_cmd_argv[1])<0)
+          printErrorMsg();
+      }
+      else
+        printErrorMsg();
     }
 
-    /* parse the single command */
-    parseSingleCommand(cmd_line, sgl_cmd_argv);
-
-
-    execvp(sgl_cmd_argv[0], sgl_cmd_argv);
-
-
-    /* kill the child process */
-    _exit(EXIT_SUCCESS);
-
+    /* create an immediately killed child process */
+    *child_pid=fork();
+    if(*child_pid==0)
+      _exit(EXIT_FAILURE);
   }
-  else if(*child_pid==-1) {
+  else {
+    //  char  cwd[512];
 
-    /* fork error */
-    perror("Cannot create a child process\n");
-    _exit(EXIT_FAILURE);
+    *child_pid = fork();
+
+    if(*child_pid==0) {
+
+      /* in the child process */
+
+      if(prev_pipe_exist) {
+
+        close(*(prev_pipe_fd+PIPE_WR_END));
+        dup2(*(prev_pipe_fd+PIPE_RD_END), STDIN_FILENO);
+        close(*(prev_pipe_fd+PIPE_RD_END));
+
+      }
+
+      if(next_pipe_exist) {
+
+        close(*(next_pipe_fd+PIPE_RD_END));
+        dup2(*(next_pipe_fd+PIPE_WR_END), STDOUT_FILENO);
+        close(*(next_pipe_fd+PIPE_WR_END));
+
+      }
+
+      else if ( write_filedes!=-1) {
+        dup2(write_filedes, STDOUT_FILENO);
+      }
+
+      /* parse the single command */
+      parseSingleCommand(cmd_line2, sgl_cmd_argv);
+
+
+      execvp(sgl_cmd_argv[0], sgl_cmd_argv);
+
+
+      /* kill the child process */
+      _exit(EXIT_SUCCESS);
+
+    }
+    else if(*child_pid==-1) {
+
+      /* fork error */
+      perror("Cannot create a child process\n");
+      _exit(EXIT_FAILURE);
+
+    }
 
   }
 }
@@ -136,7 +183,7 @@ void  executeSingleJob(pid_t* child_pid, char* cmd_line) {
 
     /* execute all the atomic commands */
     for(j=0; j<=pipe_num; j++) {
-      
+
       executeAtomicCommand(pipe_pid+j, STDIN_FILENO, redir_fd==-1 ? STDOUT_FILENO : redir_fd, pipe_argv[j], j!=0, (j!=0)?(pipe_fd+2*(j-1)):NULL, j!=pipe_num, (j!=pipe_num)?(pipe_fd+2*j):NULL);
 
       /* close one pipe once it is no longer used */
