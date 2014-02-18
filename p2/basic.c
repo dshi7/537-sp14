@@ -26,8 +26,8 @@ void  echoPrompt() {
 
 /* print the required error message */
 void  printErrorMsg() {
-  fprintf(stderr, "An error has occured\n");
-  exit(EXIT_FAILURE);
+  char  error_message[30]="An error has occurred\n";
+  write(STDERR_FILENO, error_message, strlen(error_message));
 }
 
 

@@ -59,6 +59,7 @@ void executeCurrentLine(char* cmd_line) {
 
     while(fgets(file_line, 512, fp)!=NULL) {
       printf("%s", file_line);
+      strtok( file_line, "\n");
       executeCurrentLine(file_line);
     }
   }
@@ -133,22 +134,48 @@ int main(int argc, char *argv[]) {
 
   char  cmd_line[512];
 
-  while (1) {
+  FILE *fp;
+  char  file_line[512];
 
-    /* print the shell prompt */
-    echoPrompt();
+  /* check batch mode */
+  if(argv[1]!=NULL) {
 
-    /* read the command */
-    fgets(cmd_line, 512, stdin);
 
-    /* remove the trailing newline char from fget() input */
-    strtok( cmd_line, "\n");
+    if(argv[2]!=NULL)
+      printErrorMsg();
 
-    /* check if in batch mode */
+    fp = fopen(argv[1], "r");
 
-    executeCurrentLine(cmd_line);
+    if(fp==NULL)
+      printErrorMsg();
+
+    while(fgets(file_line, 512, fp)!=NULL) {
+      printf("%s", file_line);
+      strtok( file_line, "\n");
+      executeCurrentLine(file_line);
+    }
+  }
+
+  else {
+
+    while (1) {
+
+      /* print the shell prompt */
+      echoPrompt();
+
+      /* read the command */
+      fgets(cmd_line, 512, stdin);
+
+      /* remove the trailing newline char from fget() input */
+      strtok( cmd_line, "\n");
+
+      /* check if in batch mode */
+      executeCurrentLine(cmd_line);
+
+    }
 
   }
+
 
   return  0;
 }
