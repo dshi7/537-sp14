@@ -22,9 +22,9 @@
 void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes, char* cmd_line, int prev_pipe_exist, int* prev_pipe_fd, int next_pipe_exist, int* next_pipe_fd) {
 
 
-  char* sgl_cmd_argv[512];
-  char  cmd_line2[512];
-  char  cwd[512];
+  char* sgl_cmd_argv[MAX_LENGTH];
+  char  cmd_line2[MAX_LENGTH];
+  char  cwd[MAX_LENGTH];
   strcpy(cmd_line2, cmd_line);
 
   parseSingleCommand(cmd_line, sgl_cmd_argv);
@@ -42,8 +42,10 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
     /* pwd */
     if(!strcmp(sgl_cmd_argv[0], "pwd")) {
       if(sgl_cmd_argv[1]==NULL) {
-        if(getcwd(cwd, sizeof(cwd))!=NULL)
-          fprintf(stdout, "%s\n", cwd);
+        if(getcwd(cwd, sizeof(cwd))!=NULL) {
+          write(STDOUT_FILENO, cwd, strlen(cwd));
+          write(STDOUT_FILENO, "\n", 1);
+        }
         else
           printErrorMsg();
       }
@@ -53,12 +55,17 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
 
     /* cd */
     if(!strcmp(sgl_cmd_argv[0], "cd")) {
-      if(sgl_cmd_argv[1]!=NULL && sgl_cmd_argv[2]==NULL) {
+      if(sgl_cmd_argv[1]==NULL) {
+        if(chdir(getenv("HOME"))<0)
+          printErrorMsg();
+      }
+      else if(sgl_cmd_argv[2]==NULL) {
         if(chdir(sgl_cmd_argv[1])<0)
           printErrorMsg();
       }
-      else
+      else 
         printErrorMsg();
+
     }
 
     /* create an immediately killed child process */
@@ -128,16 +135,16 @@ void  executeSingleJob(pid_t* child_pid, char* cmd_line) {
    * */
 
 
-  char  output_file[512];
-  char* file_redir_argv[512];
-  char* pipe_argv[512];
+  char  output_file[MAX_LENGTH];
+  char* file_redir_argv[MAX_LENGTH];
+  char* pipe_argv[MAX_LENGTH];
   int   redir_fd = -1;
 
   /* used for pipe */
   int   status = 0;
   int   pipe_num;
-  pid_t pipe_pid[512];
-  int   pipe_fd[512*2];        
+  pid_t pipe_pid[MAX_LENGTH];
+  int   pipe_fd[MAX_LENGTH*2];        
 
 
 
@@ -167,7 +174,7 @@ void  executeSingleJob(pid_t* child_pid, char* cmd_line) {
     /* quick create and kill a child process to initialize the pid */
     *child_pid=fork();
     if(*child_pid==0)
-      _exit(EXIT_SUCCESS);
+      exit(EXIT_SUCCESS);
 
     int j=0;
     /* parse the pipe and the number of pipes are returned */
@@ -205,6 +212,7 @@ void  executeSingleJob(pid_t* child_pid, char* cmd_line) {
     executeAtomicCommand(child_pid, STDIN_FILENO, redir_fd==-1 ? STDOUT_FILENO : redir_fd, file_redir_argv[0], 0, NULL, 0, NULL);
 
   }
+
 
 }
 

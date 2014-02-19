@@ -48,19 +48,18 @@ int getCommandMode(char* cmd_line) {
 
 /* check if empty line */
 int isEmptyLine(char* cmd_line) {
-  char* token;
-  token = strtok(cmd_line,"\t ");
-  return token==NULL;
+  char *empty_line_detector=" \t\n";
+  return  strspn(cmd_line, empty_line_detector)==strlen(cmd_line);
 }
 
 /* check if it is a built in command */
 int isBuiltInCommand(char** sgl_cmd_argv) {
 
   
-  if(!strcmp(sgl_cmd_argv[0],"quit") && sgl_cmd_argv[1]==NULL)
+  if(!strcmp(sgl_cmd_argv[0],"quit"))
     return 1;
 
-  if(!strcmp(sgl_cmd_argv[0],"pwd") && sgl_cmd_argv[1]==NULL)
+  if(!strcmp(sgl_cmd_argv[0],"pwd"))
     return 1;
 
   if(!strcmp(sgl_cmd_argv[0],"cd"))

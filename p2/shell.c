@@ -34,11 +34,11 @@ void executeCurrentLine(char* cmd_line) {
   int   mode_code;  //  indicate the mode of multiple commands
   int   status = 0;
   int   i;
-  pid_t child_pid[512];
-  char* mysh_argv[512];
+  pid_t child_pid[MAX_LENGTH];
+  char* mysh_argv[MAX_LENGTH];
 
   /* strtok will make change on cmd_line, so make a copy */
-  char  cmd_line2[512];
+  char  cmd_line2[MAX_LENGTH];
   strcpy(cmd_line2, cmd_line);
 
 
@@ -59,6 +59,7 @@ void executeCurrentLine(char* cmd_line) {
    * return 3 (illegal) 
    *
    * */
+
   if(mode_code<=1) {
 
     /* parse the multiple commands */
@@ -81,7 +82,7 @@ void executeCurrentLine(char* cmd_line) {
   else if(mode_code==2) {
 
     /* parse the multiple commands */
-    parseParallelCommands(cmd_line, mysh_argv);
+    parseParallelCommands(cmd_line2, mysh_argv);
 
     i = 0;
     while(mysh_argv[i])  {
@@ -112,17 +113,20 @@ void executeCurrentLine(char* cmd_line) {
 
 int main(int argc, char *argv[]) {
 
-  char  cmd_line[512];
+  char  cmd_line[MAX_LENGTH];
 
   FILE *fp;
-  char  file_line[512];
+  char  file_line[4096];  //  ordinary person never write a line longer
+
 
   /* check batch mode */
   if(argv[1]!=NULL) {
 
 
-    if(argv[2]!=NULL)
+    if(argv[2]!=NULL) {
       printErrorMsg();
+      return 1;
+    }
 
     fp = fopen(argv[1], "r");
 
@@ -132,27 +136,33 @@ int main(int argc, char *argv[]) {
     }
 
 
-    while(fgets(file_line, 512, fp)!=NULL) {
+    while(fgets(file_line, 4096, fp)!=NULL) {
 
 
       write(STDOUT_FILENO, file_line, strlen(file_line));
+
+      /* detect if the line is longer than MAX_LENGTH */
+      if(strlen(file_line)>MAX_LENGTH) {
+        printErrorMsg();
+        continue;
+      }
+
+
+      /* detect if the line is blank */
+      if(isEmptyLine(file_line))
+        continue;
+
       strtok( file_line, "\n");
 
       /* make sure that all the lines are finished in order */
-      if(fork()==0) {
-
-        executeCurrentLine(file_line);
+      if(fork()==0) 
         exit(EXIT_SUCCESS);
-
-      }
       else {
         wait(NULL);
-
-        /* check empty lines */
-//        if(isEmptyLine(file_line))
-//          continue;
-
+        executeCurrentLine(file_line);
       }
+
+
     }
 
   }
@@ -165,7 +175,7 @@ int main(int argc, char *argv[]) {
       echoPrompt();
 
       /* read the command */
-      fgets(cmd_line, 512, stdin);
+      fgets(cmd_line, MAX_LENGTH, stdin);
 
       /* remove the trailing newline char from fget() input */
       strtok( cmd_line, "\n");
