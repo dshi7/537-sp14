@@ -21,6 +21,10 @@ void  printErrorMsg();
 int getCommandMode(char* cmd_line); 
 
 
+/* check if empty line */
+int isEmptyLine(char* cmd_line);
+
+
 /* check if it is a built in command */
 int isBuiltInCommand(char** sgl_cmd_argv);
 

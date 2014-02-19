@@ -46,6 +46,13 @@ int getCommandMode(char* cmd_line) {
 }
 
 
+/* check if empty line */
+int isEmptyLine(char* cmd_line) {
+  char* token;
+  token = strtok(cmd_line,"\t ");
+  return token==NULL;
+}
+
 /* check if it is a built in command */
 int isBuiltInCommand(char** sgl_cmd_argv) {
 

@@ -64,10 +64,9 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
     /* create an immediately killed child process */
     *child_pid=fork();
     if(*child_pid==0)
-      _exit(EXIT_FAILURE);
+      _exit(EXIT_SUCCESS);
   }
   else {
-    //  char  cwd[512];
 
     *child_pid = fork();
 
@@ -99,11 +98,12 @@ void  executeAtomicCommand(pid_t* child_pid, int read_filedes, int write_filedes
       parseSingleCommand(cmd_line2, sgl_cmd_argv);
 
 
-      execvp(sgl_cmd_argv[0], sgl_cmd_argv);
+      if(execvp(sgl_cmd_argv[0], sgl_cmd_argv)==-1)
+        printErrorMsg();
 
 
       /* kill the child process */
-      _exit(EXIT_SUCCESS);
+      _exit(EXIT_FAILURE);
 
     }
     else if(*child_pid==-1) {
@@ -179,7 +179,7 @@ void  executeSingleJob(pid_t* child_pid, char* cmd_line) {
     /* create (pipe_num+1) different pipes */
     for(j=0; j<pipe_num; j++) 
       if (pipe(pipe_fd+2*j)==-1) 
-        exit(EXIT_FAILURE);
+        exit(EXIT_SUCCESS);
 
     /* execute all the atomic commands */
     for(j=0; j<=pipe_num; j++) {

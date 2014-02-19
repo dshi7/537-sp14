@@ -37,9 +37,9 @@ void  parseParallelCommands(char* cmd_line, char**mysh_argv) {
 /* parse a single command */
 void  parseSingleCommand(char* cmd_line, char**mysh_argv) {
 
-  *mysh_argv = strtok(cmd_line," \t");
+  *mysh_argv = strtok(cmd_line," \t\n");
   while (*mysh_argv!=NULL)  
-    *(++mysh_argv)=strtok(NULL," \t");
+    *(++mysh_argv)=strtok(NULL," \t\n");
 
 }
 
