@@ -18,10 +18,6 @@
 
 int main() {
 
-  printf("helloworld\n");
-
-  printf("%d\n", getpagesize());
-
   int status = Mem_Init(4096, 0);
 
   Mem_Alloc(8192);
