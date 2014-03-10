@@ -1,28 +1,22 @@
 #	Makefile for 537-sp14-p3
 
 CC=gcc
-CFLAGS=-g
+CFLAGS=-g 
+LDFLAGS=-shared
 
-ALL=test
+ALL=prog.exe
 
-test : test.o mem.o
-	$(CC) $(CFLAGS) test.o mem.o -o $(ALL)
+prog.exe: mymain.o libmem.so
+	$(CC) $(CFLAGS) $< -o $@ -lmem -L.
 
-test.o : test.c
-	$(CC) $(CFLAGS) -c test.c
+mem.o	: 
+	$(CC) $(CFLAGS) -c -fpic mem.c
 
-mem.o	: mem.c
-	$(CC) $(CFLAGS) -c mem.c
+mymain.o :
+	$(CC) -c mymain.c
 
-#mem.o	: mem.c
-#	$(CC) $(CFLAGS) -c -fpic mem.c
-
-#libmem.so : mem.o
-#	$(CC) $(CFLAGS) -shared -o $@ $<
-
-#test : test.o libmem.so
-#	$(CC) $(CFLAGS) $< -o $@ -lmem -L.
+libmem.so : mem.o
+	$(CC) $(LDFLAGS) -o $@ $<
 
 clean:
-	rm -rf *.o test *.so
-
+	rm -rf *.o *.so *.exe
