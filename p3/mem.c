@@ -22,7 +22,7 @@
 #define FREE_PATTERN  0xDEADBEEF
 #define PADDING_PATTERN 0xABCDDCBA
 #define HEADER_ALLOCATED_SIZE 4
-#define HEADER_FREE_SIZE 12
+#define HEADER_FREE_SIZE 8
 
 #define PADDING_SIZE 64
 
@@ -52,20 +52,18 @@ int Mem_Init(int sizeOfRegion, int debug) {
   }
   close(fd);
 
+  *(int*)ptr_header = -1;
+  *(int*)((char*)ptr_header+4) = total_size-HEADER_FREE_SIZE;
+
   //  debug mode setup starts
   if (debug==1) {
     debug_enable = 1;
-    int *tmp = ptr_header+HEADER_FREE_SIZE;    
-    while (tmp<(int*)(ptr_header+sizeOfRegion)) {
+    int *tmp;
+    for ( tmp = (int*)((char*)ptr_header + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_header + sizeOfRegion); tmp ++ )
       *tmp = FREE_PATTERN;
-      tmp++;
-    }
   }
   //  debug mode setup ends
 
-  *(long*)ptr_header = (long)NULL;
-  *(int*)((char*)ptr_header+8) = total_size-HEADER_FREE_SIZE;
-  
   return 0;   //  success
 
 }
@@ -84,28 +82,24 @@ void *Mem_Alloc(int size) {
   /* 4-byte assigned */
   size = ((size-1)/4+1) *4;
 
-  int *ptr_available_size;
   void *ret_ptr;  //  hold the return value if debug is enabled
   int found = 0;
 
   //  traverse the free list
-  long walking_ptr = (long)ptr_header;
+  void *walking_ptr = ptr_header;
 
-  while (walking_ptr != (long)NULL) {
+  while (walking_ptr!=NULL) {
 
-    if ( *(int*)(walking_ptr+8) > size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
-
+    //  sufficient space for allocation
+    if ( *(int*)((char*)walking_ptr+4) >= size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
+      //  mark found
       found = 1;
-
       //  update the available size of the current free chunk
-      *(int*)(walking_ptr+8) -= ( size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE );
-
+      *(int*)((char*)walking_ptr+4) -= ( size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE );
       //  write the size of allocated chunk
-      *(int*)(walking_ptr + HEADER_FREE_SIZE + *(int*)(walking_ptr+8)) = size;
-
+      *(int*)((char*)walking_ptr + HEADER_FREE_SIZE + *(int*)((char*)walking_ptr+4)) = size;
       //  let ret_ptr be the returned value
-      ret_ptr = (void*)(walking_ptr + HEADER_FREE_SIZE + *(int*)(walking_ptr+8) + HEADER_ALLOCATED_SIZE + PADDING_SIZE);
-
+      ret_ptr = (void*)((char*)walking_ptr + HEADER_FREE_SIZE + *(int*)((char*)walking_ptr+4) + HEADER_ALLOCATED_SIZE + PADDING_SIZE);
       //  check debug mode
       if ( debug_enable==0 )
         return ret_ptr;
@@ -113,8 +107,7 @@ void *Mem_Alloc(int size) {
         break;
     }
     else
-      walking_ptr = *(long*)walking_ptr;
-
+      walking_ptr = (*(int*)walking_ptr!=-1) ? (void*)((char*)walking_ptr + *(int*)walking_ptr) : NULL;
   };
 
   if (found==0) {
@@ -126,97 +119,109 @@ void *Mem_Alloc(int size) {
     //  set the top padding
     int *tmp;
     for ( tmp = (int*)((char*)ret_ptr - PADDING_SIZE); tmp < (int*)ret_ptr; tmp++ )
-      *tmp = (int)PADDING_PATTERN;
+      *tmp = PADDING_PATTERN;
     //  set the bottom padding
     for ( tmp = (int*)((char*)ret_ptr + size); tmp < (int*)((char*)ret_ptr + size + PADDING_SIZE); tmp++ )
-      *tmp = (int)PADDING_PATTERN;
+      *tmp = PADDING_PATTERN;
 
     //  check the filling values 
-    walking_ptr = (long)ptr_header;
-    while ( walking_ptr != (long)NULL ) {
-      for ( tmp = (int*)(walking_ptr+HEADER_FREE_SIZE); tmp <(int*)(walking_ptr + HEADER_FREE_SIZE + *(int*)(walking_ptr+8)); tmp++ )
+    walking_ptr = ptr_header;
+
+    while ( walking_ptr != NULL ) {
+      for ( tmp = (int*)((char*)walking_ptr+HEADER_FREE_SIZE); tmp < (int*)((char*)walking_ptr+HEADER_FREE_SIZE + *(int*)((char*)walking_ptr+4)); tmp++ )
         if (*tmp != FREE_PATTERN) {
           m_error = E_CORRUPT_FREESPACE;
           return NULL;
         }
-      walking_ptr = *(long*)walking_ptr;
+      walking_ptr = (*(int*)walking_ptr!=-1) ? (void*)((char*)walking_ptr + *(int*)walking_ptr) : NULL;
     };
+
     return ret_ptr;
   }
 
   return NULL;
-
 }
 
 int  Mem_Free(void *ptr) {
-
+  
   //  find the last free chunk prior to allocated space
-  long prev_free_chunk = (long)ptr_header;
-  long next_free_chunk = *(long*)prev_free_chunk;
+  void *prev_free_chunk = ptr_header;
+  void *next_free_chunk;
   int found = 0;
   int *tmp;
 
   if (ptr==NULL)
     return 0;
   
+  //  ptr must be within the initialized space
+  if ( ptr_header==NULL || (long)ptr<(long)ptr_header || (long)ptr>=(long)((char*)ptr_header+total_size) ) {
+    m_error = E_BAD_POINTER;
+    return -1;
+  }
+
   //  insert new element
   int allocated_size = *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE);
+
   if (allocated_size < 0) {
     m_error = E_BAD_POINTER;
     return -1;
   }
+
   //  debug mode starts
   //  check whether either side of padding is overwritten
   if (debug_enable == 1) {
-    for (tmp = (int*)((char*)ptr-PADDING_SIZE); tmp<(int*)ptr; tmp++) 
+    for ( tmp = (int*)((char*)ptr-PADDING_SIZE); tmp<(int*)ptr; tmp++ ) 
       if (*tmp != PADDING_PATTERN) {
         m_error = E_PADDING_OVERWRITTEN;
         return -1;
       }
-    for (tmp = (int*)((char*)ptr + allocated_size); tmp < (int*)((char*)ptr + allocated_size + PADDING_SIZE); tmp++)
+    for ( tmp = (int*)((char*)ptr + allocated_size); tmp < (int*)((char*)ptr + allocated_size + PADDING_SIZE); tmp++)
       if (*tmp != PADDING_PATTERN) {
         m_error = E_PADDING_OVERWRITTEN;
         return -1;
       }
-    //  debug mode ends
   }
+  //  debug mode ends
 
-  //  ptr must be within the initialized space
-  if ( prev_free_chunk==(long)NULL || (long)ptr<(long)ptr_header || (long)ptr>=(long)ptr_header+total_size ) {
-    m_error = E_BAD_POINTER;
-    return -1;
-  }
-
-  while (prev_free_chunk!=(long)NULL) {
-    next_free_chunk = *(long*)prev_free_chunk;
-    if (next_free_chunk==(long)NULL || next_free_chunk>(long)ptr) 
+  while (1) {
+    next_free_chunk = *(int*)prev_free_chunk==-1 ? NULL : (void*)((char*)prev_free_chunk+*(int*)prev_free_chunk);
+    if ( next_free_chunk == NULL || next_free_chunk > ptr )
       break;
     prev_free_chunk = next_free_chunk;
   }
 
+  //  set the newly inserted free chunk
+  void *ptr_new = (void*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE);
+  int additional_space = allocated_size + 2*PADDING_SIZE + HEADER_ALLOCATED_SIZE - HEADER_FREE_SIZE;
 
-  *(long*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) = (long)next_free_chunk;
-  *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE+8) = allocated_size+2*PADDING_SIZE+HEADER_ALLOCATED_SIZE-HEADER_FREE_SIZE;
-  *(long*)prev_free_chunk = (long)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE);
-  for (tmp = (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE + *(int*)((char*)ptr-PADDING_SIZE - HEADER_ALLOCATED_SIZE + 8)); tmp ++ )
+  //  insert new element into free list
+  *(int*)ptr_new = (next_free_chunk==NULL) ? -1 : ( (char*)next_free_chunk - (char*)ptr_new );
+  *(int*)((char*)ptr_new+4) = additional_space;
+  for ( tmp = (int*)((char*)ptr_new + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE + additional_space); tmp ++ )
     *tmp = (int)FREE_PATTERN;
-  
+  *(int*)prev_free_chunk = (char*)ptr_new - (char*)prev_free_chunk;
+
   //  check if the newly freed part can merge with the next free chunk
-  if ( next_free_chunk == (long)((char*)ptr+allocated_size+PADDING_SIZE) ) {
-    *(long*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) = *(long*)next_free_chunk;
-    *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE+8) += (*(int*)(next_free_chunk+8)+HEADER_FREE_SIZE);
-    for (tmp = (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE + *(int*)((char*)ptr-PADDING_SIZE - HEADER_ALLOCATED_SIZE + 8)); tmp ++ )
+  if ( next_free_chunk!=NULL && (char*)ptr_new + HEADER_FREE_SIZE + additional_space == (char*)next_free_chunk ) {
+    if ( *(int*)next_free_chunk != -1 )
+      *(int*)ptr_new += *(int*)next_free_chunk;
+    else
+      *(int*)ptr_new = -1;
+    *(int*)((char*)ptr_new+4) += *(int*)((char*)next_free_chunk+4) + HEADER_FREE_SIZE;
+    for ( tmp = (int*)((char*)ptr_new + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE + *(int*)((char*)ptr_new+4)); tmp ++ )
       *tmp = (int)FREE_PATTERN;
   }
 
   //  check if the newly freed part can merge with the prev free chunk
-  if ( (long)(prev_free_chunk +HEADER_FREE_SIZE + *(int*)((char*)prev_free_chunk+8)) == (long)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) ) {
-    *(long*)prev_free_chunk = *(long*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE);
-    *(int*)(prev_free_chunk+8) += (*(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE+8)+HEADER_FREE_SIZE);
-    for ( tmp = (int*)(prev_free_chunk+HEADER_FREE_SIZE); tmp < (int*)(prev_free_chunk+HEADER_FREE_SIZE+*(int*)(prev_free_chunk+8)); tmp++ )
+  if ( (char*)prev_free_chunk + HEADER_FREE_SIZE + *(int*)((char*)prev_free_chunk+4) == (char*)ptr_new ) {
+    if ( *(int*)ptr_new != -1 )
+      *(int*)prev_free_chunk += *(int*)ptr_new;
+    else
+      *(int*)prev_free_chunk = -1;
+    *(int*)((char*)prev_free_chunk+4) += *(int*)((char*)ptr_new+4) + HEADER_FREE_SIZE;
+    for ( tmp = (int*)((char*)prev_free_chunk + HEADER_FREE_SIZE); tmp < (int*)((char*)prev_free_chunk + HEADER_FREE_SIZE + *(int*)((char*)prev_free_chunk+4)); tmp++ )
       *tmp = (int)FREE_PATTERN;
   }
-
 
   return 0;
 }
