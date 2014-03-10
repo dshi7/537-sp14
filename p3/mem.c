@@ -55,7 +55,7 @@ int Mem_Init(int sizeOfRegion, int debug) {
   //  debug mode setup starts
   if (debug==1) {
     debug_enable = 1;
-    int *tmp = ptr_header;     //  use an integer pointer for its 4-byte alignment
+    int *tmp = ptr_header+HEADER_FREE_SIZE;    
     while (tmp<(int*)(ptr_header+sizeOfRegion)) {
       *tmp = FREE_PATTERN;
       tmp++;
@@ -63,10 +63,7 @@ int Mem_Init(int sizeOfRegion, int debug) {
   }
   //  debug mode setup ends
 
-  //  the 1st 8-byte is for address 
   *(long*)ptr_header = (long)NULL;
-
-  //  the 2st 4-byte is for size of current free chunk
   *(int*)((char*)ptr_header+8) = total_size-HEADER_FREE_SIZE;
   
   return 0;   //  success
@@ -96,23 +93,28 @@ void *Mem_Alloc(int size) {
 
   while (walking_ptr != (long)NULL) {
 
-    //  find the pointer to the available size of the current free chunk
-    ptr_available_size = (int*)(walking_ptr+8);
-    if (*ptr_available_size > size+PADDING_SIZE*2+HEADER_ALLOCATED_SIZE) {
-      found = 1;
-      *ptr_available_size -= (size+PADDING_SIZE*2+HEADER_ALLOCATED_SIZE);
+    if ( *(int*)(walking_ptr+8) > size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
 
-      //  each allocatd space should have 64-byte paddings on both sides
-      *(int*)(walking_ptr + HEADER_FREE_SIZE + *ptr_available_size ) = size;
-      ret_ptr = (void*)(walking_ptr + HEADER_FREE_SIZE + *ptr_available_size + HEADER_ALLOCATED_SIZE + PADDING_SIZE);
+      found = 1;
+
+      //  update the available size of the current free chunk
+      *(int*)(walking_ptr+8) -= ( size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE );
+
+      //  write the size of allocated chunk
+      *(int*)(walking_ptr + HEADER_FREE_SIZE + *(int*)(walking_ptr+8)) = size;
+
+      //  let ret_ptr be the returned value
+      ret_ptr = (void*)(walking_ptr + HEADER_FREE_SIZE + *(int*)(walking_ptr+8) + HEADER_ALLOCATED_SIZE + PADDING_SIZE);
+
+      //  check debug mode
       if ( debug_enable==0 )
         return ret_ptr;
-      else 
+      else
         break;
     }
-    else {
+    else
       walking_ptr = *(long*)walking_ptr;
-    }
+
   };
 
   if (found==0) {
@@ -131,16 +133,14 @@ void *Mem_Alloc(int size) {
 
     //  check the filling values 
     walking_ptr = (long)ptr_header;
-    while (walking_ptr != (long)NULL) {
-      for (tmp = (int*)(walking_ptr+HEADER_FREE_SIZE); tmp<(int*)(walking_ptr+HEADER_FREE_SIZE+*(int*)(walking_ptr+8)); tmp++) {
+    while ( walking_ptr != (long)NULL ) {
+      for ( tmp = (int*)(walking_ptr+HEADER_FREE_SIZE); tmp <(int*)(walking_ptr + HEADER_FREE_SIZE + *(int*)(walking_ptr+8)); tmp++ )
         if (*tmp != FREE_PATTERN) {
           m_error = E_CORRUPT_FREESPACE;
           return NULL;
         }
-      }
       walking_ptr = *(long*)walking_ptr;
     };
-
     return ret_ptr;
   }
 
@@ -154,9 +154,32 @@ int  Mem_Free(void *ptr) {
   long prev_free_chunk = (long)ptr_header;
   long next_free_chunk = *(long*)prev_free_chunk;
   int found = 0;
+  int *tmp;
 
   if (ptr==NULL)
     return 0;
+  
+  //  insert new element
+  int allocated_size = *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE);
+  if (allocated_size < 0) {
+    m_error = E_BAD_POINTER;
+    return -1;
+  }
+  //  debug mode starts
+  //  check whether either side of padding is overwritten
+  if (debug_enable == 1) {
+    for (tmp = (int*)((char*)ptr-PADDING_SIZE); tmp<(int*)ptr; tmp++) 
+      if (*tmp != PADDING_PATTERN) {
+        m_error = E_PADDING_OVERWRITTEN;
+        return -1;
+      }
+    for (tmp = (int*)((char*)ptr + allocated_size); tmp < (int*)((char*)ptr + allocated_size + PADDING_SIZE); tmp++)
+      if (*tmp != PADDING_PATTERN) {
+        m_error = E_PADDING_OVERWRITTEN;
+        return -1;
+      }
+    //  debug mode ends
+  }
 
   //  ptr must be within the initialized space
   if ( prev_free_chunk==(long)NULL || (long)ptr<(long)ptr_header || (long)ptr>=(long)ptr_header+total_size ) {
@@ -171,51 +194,29 @@ int  Mem_Free(void *ptr) {
     prev_free_chunk = next_free_chunk;
   }
 
-  //  debug mode starts
-  //  check whether either side of padding is overwritten
-  int *tmp;
-  int allocated_size = *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE);
-  for (tmp = (int*)((char*)ptr-PADDING_SIZE); tmp<(int*)((char*)ptr); tmp++) 
-    if (*tmp != PADDING_PATTERN) {
-      m_error = E_PADDING_OVERWRITTEN;
-      return -1;
-    }
-  for (tmp = (int*)(ptr+allocated_size); tmp < (int*)(ptr+allocated_size+PADDING_SIZE); tmp++)
-    if (*tmp != PADDING_PATTERN) {
-      m_error = E_PADDING_OVERWRITTEN;
-      return -1;
-    }
-  //  debug mode ends
 
-  //  set DEADBEEF
-  for (tmp = (int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE); tmp < (int*)(ptr+allocated_size+PADDING_SIZE); tmp++)
-    *tmp = (int)FREE_PATTERN;
-
-  //  insert new element
-  *(long*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) = next_free_chunk;
+  *(long*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) = (long)next_free_chunk;
   *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE+8) = allocated_size+2*PADDING_SIZE+HEADER_ALLOCATED_SIZE-HEADER_FREE_SIZE;
-  *(long*)prev_free_chunk = (long)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE);
+  *(long*)prev_free_chunk = (long)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE);
+  for (tmp = (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE + *(int*)((char*)ptr-PADDING_SIZE - HEADER_ALLOCATED_SIZE + 8)); tmp ++ )
+    *tmp = (int)FREE_PATTERN;
   
   //  check if the newly freed part can merge with the next free chunk
-  if ( next_free_chunk == (long)(ptr+allocated_size+PADDING_SIZE*2+HEADER_ALLOCATED_SIZE) ) {
+  if ( next_free_chunk == (long)((char*)ptr+allocated_size+PADDING_SIZE) ) {
     *(long*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) = *(long*)next_free_chunk;
-    *(int*)((char*)ptr-PADDING_SIZE+8)+=(*(int*)((char*)next_free_chunk+8)+HEADER_FREE_SIZE);
-
-    tmp = (int*)next_free_chunk;
-    *tmp = (int)FREE_PATTERN; 
-    tmp++; *tmp = (int)FREE_PATTERN; 
-    tmp++; *tmp = (int)FREE_PATTERN;  //  overwrite 12-byte of the head of the next free chunk
+    *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE+8) += (*(int*)(next_free_chunk+8)+HEADER_FREE_SIZE);
+    for (tmp = (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE + HEADER_FREE_SIZE + *(int*)((char*)ptr-PADDING_SIZE - HEADER_ALLOCATED_SIZE + 8)); tmp ++ )
+      *tmp = (int)FREE_PATTERN;
   }
+
   //  check if the newly freed part can merge with the prev free chunk
-  if ( (long)(prev_free_chunk+*(int*)((char*)prev_free_chunk+8)) == (long)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) ) {
+  if ( (long)(prev_free_chunk +HEADER_FREE_SIZE + *(int*)((char*)prev_free_chunk+8)) == (long)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE) ) {
     *(long*)prev_free_chunk = *(long*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE);
-    *(int*)((char*)prev_free_chunk+8) += (*(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE+8)+HEADER_FREE_SIZE);
-
-    tmp = (int*)((char*)ptr-PADDING_SIZE-HEADER_FREE_SIZE);
-    *tmp = (int)FREE_PATTERN; 
-    tmp++; *tmp = (int)FREE_PATTERN; 
-    tmp++; *tmp = (int)FREE_PATTERN;  //  overwrite 12-byte of the head of the next free chunk
+    *(int*)(prev_free_chunk+8) += (*(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE+8)+HEADER_FREE_SIZE);
+    for ( tmp = (int*)(prev_free_chunk+HEADER_FREE_SIZE); tmp < (int*)(prev_free_chunk+HEADER_FREE_SIZE+*(int*)(prev_free_chunk+8)); tmp++ )
+      *tmp = (int)FREE_PATTERN;
   }
+
 
   return 0;
 }
