@@ -24,13 +24,13 @@
 #define HEADER_ALLOCATED_SIZE 4
 #define HEADER_FREE_SIZE 8
 
-#define PADDING_SIZE 64
-
 /* global variables of debug signal and error signal */
 int debug_enable;
 int m_error;
 
 void *ptr_header = NULL;
+int PADDING_SIZE;
+
 int total_size;
 
 int Mem_Init(int sizeOfRegion, int debug) {
@@ -43,8 +43,10 @@ int Mem_Init(int sizeOfRegion, int debug) {
 
   int fd = open("/dev/zero", O_RDWR);   //  file description
 
-  ptr_header = mmap(NULL, sizeOfRegion, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+//  total_size = sizeOfRegion + 2*PADDING_SIZE;
   total_size = sizeOfRegion;
+
+  ptr_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 
   if (ptr_header==MAP_FAILED) {
     m_error = E_BAD_ARGS;
@@ -55,6 +57,7 @@ int Mem_Init(int sizeOfRegion, int debug) {
   *(int*)ptr_header = -1;
   *(int*)((char*)ptr_header+4) = total_size-HEADER_FREE_SIZE;
 
+  PADDING_SIZE = (debug==1)?64:0;
   //  debug mode setup starts
   if (debug==1) {
     debug_enable = 1;
@@ -89,6 +92,9 @@ void *Mem_Alloc(int size) {
   void *walking_ptr = ptr_header;
 
   while (walking_ptr!=NULL) {
+
+//    printf("available : %d", *(int*)((char*)walking_ptr+4) );
+//    printf("required : %d", size+PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE);
 
     //  sufficient space for allocation
     if ( *(int*)((char*)walking_ptr+4) > size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
@@ -154,7 +160,7 @@ int  Mem_Free(void *ptr) {
     return 0;
   
   //  ptr must be within the initialized space
-  if ( ptr_header==NULL || (long)ptr<(long)ptr_header || (long)ptr>=(long)((char*)ptr_header+total_size) ) {
+  if ( debug_enable==1 && ( ptr_header==NULL || (long)ptr<(long)ptr_header || (long)ptr>=(long)((char*)ptr_header+total_size) ) ) {
     m_error = E_BAD_POINTER;
     return -1;
   }
@@ -217,8 +223,9 @@ int  Mem_Free(void *ptr) {
   *(int*)ptr_new = (next_free_chunk==NULL) ? -1 : ( (char*)next_free_chunk - (char*)ptr_new );
 //  printf("here : %d\n", *(int*)ptr_new);
   *(int*)((char*)ptr_new+4) = additional_space;
-  for ( tmp = (int*)((char*)ptr_new + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE + additional_space); tmp ++ )
-    *tmp = (int)FREE_PATTERN;
+  if ( debug_enable==1 )
+    for ( tmp = (int*)((char*)ptr_new + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE + additional_space); tmp ++ )
+      *tmp = (int)FREE_PATTERN;
   *(int*)prev_free_chunk = (char*)ptr_new - (char*)prev_free_chunk;
 
 
@@ -229,8 +236,9 @@ int  Mem_Free(void *ptr) {
     else
       *(int*)ptr_new = -1;
     *(int*)((char*)ptr_new+4) += *(int*)((char*)next_free_chunk+4) + HEADER_FREE_SIZE;
-    for ( tmp = (int*)next_free_chunk; tmp < (int*)((char*)next_free_chunk + HEADER_FREE_SIZE); tmp++ )
-      *tmp = (int)FREE_PATTERN;
+    if ( debug_enable==1 )
+      for ( tmp = (int*)next_free_chunk; tmp < (int*)((char*)next_free_chunk + HEADER_FREE_SIZE); tmp++ )
+        *tmp = (int)FREE_PATTERN;
   }
 
   //  check if the newly freed part can merge with the prev free chunk
@@ -240,8 +248,9 @@ int  Mem_Free(void *ptr) {
     else
       *(int*)prev_free_chunk = -1;
     *(int*)((char*)prev_free_chunk+4) += *(int*)((char*)ptr_new+4) + HEADER_FREE_SIZE;
-    for ( tmp = (int*)ptr_new; tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE);  tmp++ )
-      *tmp = (int)FREE_PATTERN;
+    if ( debug_enable==1 )
+      for ( tmp = (int*)ptr_new; tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE);  tmp++ )
+        *tmp = (int)FREE_PATTERN;
   }
   return 0;
 }
