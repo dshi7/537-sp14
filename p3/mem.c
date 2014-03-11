@@ -91,7 +91,7 @@ void *Mem_Alloc(int size) {
   while (walking_ptr!=NULL) {
 
     //  sufficient space for allocation
-    if ( *(int*)((char*)walking_ptr+4) >= size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
+    if ( *(int*)((char*)walking_ptr+4) > size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
       //  mark found
       found = 1;
       //  update the available size of the current free chunk
@@ -143,7 +143,7 @@ void *Mem_Alloc(int size) {
 }
 
 int  Mem_Free(void *ptr) {
-  
+
   //  find the last free chunk prior to allocated space
   void *prev_free_chunk = ptr_header;
   void *next_free_chunk;
@@ -159,9 +159,15 @@ int  Mem_Free(void *ptr) {
     return -1;
   }
 
-  //  insert new element
-  int allocated_size = *(int*)((char*)ptr-PADDING_SIZE-HEADER_ALLOCATED_SIZE);
+  //  set the newly inserted free chunk
+  void *ptr_new = (void*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE);
+  int allocated_size = *(int*)ptr_new;
+  int additional_space = allocated_size + 2*PADDING_SIZE + HEADER_ALLOCATED_SIZE - HEADER_FREE_SIZE;
 
+//  printf("\n\n# Mem_Free : \n");
+//  printf("ptr to insert : %08x\n", ptr_new);
+//  printf("ptr to header: %08x\n", ptr_header);
+  
   if (allocated_size < 0) {
     m_error = E_BAD_POINTER;
     return -1;
@@ -185,30 +191,45 @@ int  Mem_Free(void *ptr) {
 
   while (1) {
     next_free_chunk = *(int*)prev_free_chunk==-1 ? NULL : (void*)((char*)prev_free_chunk+*(int*)prev_free_chunk);
-    if ( next_free_chunk == NULL || next_free_chunk > ptr )
+//    printf("\tin while loop : %08x\t%08x\t%08x\n", prev_free_chunk, ptr_new, next_free_chunk);
+    if ( next_free_chunk == NULL || next_free_chunk > ptr_new ) {
+//      printf("\tbreak the while loop ! \n");
+//      printf("\tnow : %08x\t%08x\t%08x\n", prev_free_chunk, ptr_new, next_free_chunk);
       break;
+    }
     prev_free_chunk = next_free_chunk;
   }
+//  printf("%08x\t%08x\t%08x\n", prev_free_chunk, ptr_new, next_free_chunk);
 
-  //  set the newly inserted free chunk
-  void *ptr_new = (void*)((char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE);
-  int additional_space = allocated_size + 2*PADDING_SIZE + HEADER_ALLOCATED_SIZE - HEADER_FREE_SIZE;
+  //  more rigorous boundary checks
+  if ( (char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE < (char*)prev_free_chunk + HEADER_FREE_SIZE + *(int*)((char*)prev_free_chunk+4) ) {
+    m_error = E_BAD_POINTER;
+    return -1;
+  }
+
+  if ( (long)((char*)ptr + allocated_size + PADDING_SIZE) > (next_free_chunk!=NULL ? (long)next_free_chunk : ((long)ptr_header + total_size)) ) {
+//    printf("\n\nERROR : %08x %d %08x %d %08x %08x\n", ptr, allocated_size, ptr+allocated_size+PADDING_SIZE, (next_free_chunk!=NULL), (long)next_free_chunk, (long)ptr_header+total_size);
+    m_error = E_PADDING_OVERWRITTEN;
+    return -1;
+  }
 
   //  insert new element into free list
   *(int*)ptr_new = (next_free_chunk==NULL) ? -1 : ( (char*)next_free_chunk - (char*)ptr_new );
+//  printf("here : %d\n", *(int*)ptr_new);
   *(int*)((char*)ptr_new+4) = additional_space;
   for ( tmp = (int*)((char*)ptr_new + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE + additional_space); tmp ++ )
     *tmp = (int)FREE_PATTERN;
   *(int*)prev_free_chunk = (char*)ptr_new - (char*)prev_free_chunk;
 
+
   //  check if the newly freed part can merge with the next free chunk
-  if ( next_free_chunk!=NULL && (char*)ptr_new + HEADER_FREE_SIZE + additional_space == (char*)next_free_chunk ) {
+  if ( *(int*)ptr_new!=-1 && (char*)ptr_new + HEADER_FREE_SIZE + additional_space == (char*)next_free_chunk ) {
     if ( *(int*)next_free_chunk != -1 )
       *(int*)ptr_new += *(int*)next_free_chunk;
     else
       *(int*)ptr_new = -1;
     *(int*)((char*)ptr_new+4) += *(int*)((char*)next_free_chunk+4) + HEADER_FREE_SIZE;
-    for ( tmp = (int*)((char*)ptr_new + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE + *(int*)((char*)ptr_new+4)); tmp ++ )
+    for ( tmp = (int*)next_free_chunk; tmp < (int*)((char*)next_free_chunk + HEADER_FREE_SIZE); tmp++ )
       *tmp = (int)FREE_PATTERN;
   }
 
@@ -219,9 +240,23 @@ int  Mem_Free(void *ptr) {
     else
       *(int*)prev_free_chunk = -1;
     *(int*)((char*)prev_free_chunk+4) += *(int*)((char*)ptr_new+4) + HEADER_FREE_SIZE;
-    for ( tmp = (int*)((char*)prev_free_chunk + HEADER_FREE_SIZE); tmp < (int*)((char*)prev_free_chunk + HEADER_FREE_SIZE + *(int*)((char*)prev_free_chunk+4)); tmp++ )
+    for ( tmp = (int*)ptr_new; tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE);  tmp++ )
       *tmp = (int)FREE_PATTERN;
   }
-
   return 0;
+}
+
+void Mem_Dump() {
+//  printf ("\n\n%08x\t%d\n", ptr_header, total_size);
+
+  printf("\n###\nMem_Dump() :\n\n");
+  void *walking_ptr = ptr_header;
+
+  while (walking_ptr!=NULL) {
+    printf("Free List : \n\t%08x\t%d\n\t%08x\t%d\n", walking_ptr, *(int*)walking_ptr, (char*)walking_ptr+4, *(int*)((char*)walking_ptr+4));
+    if (*(int*)walking_ptr != -1)
+      walking_ptr = (void*)((char*)walking_ptr + *(int*)walking_ptr);
+    else
+      walking_ptr = NULL;
+  }
 }
