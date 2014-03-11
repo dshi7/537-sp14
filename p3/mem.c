@@ -21,8 +21,8 @@
 
 #define FREE_PATTERN  0xDEADBEEF
 #define PADDING_PATTERN 0xABCDDCBA
-#define HEADER_ALLOCATED_SIZE 4
-#define HEADER_FREE_SIZE 8
+#define HEADER_ALLOCATED_SIZE 8
+#define HEADER_FREE_SIZE  8
 
 /* global variables of debug signal and error signal */
 int debug_enable;
@@ -64,7 +64,7 @@ int Mem_Init(int sizeOfRegion, int debug) {
   if (debug==1) {
     debug_enable = 1;
     int *tmp;
-    for ( tmp = (int*)((char*)ptr_header + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_header + sizeOfRegion); tmp ++ )
+    for ( tmp = (int*)((char*)ptr_header + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_header + total_size); tmp ++ )
       *tmp = FREE_PATTERN;
   }
   //  debug mode setup ends
@@ -92,14 +92,12 @@ void *Mem_Alloc(int size) {
 
   //  traverse the free list
   void *walking_ptr = ptr_header;
+  void *prev_ptr = NULL;
 
   while (walking_ptr!=NULL) {
 
-//    printf("available : %d", *(int*)((char*)walking_ptr+4) );
-//    printf("required : %d", size+PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE);
-
-    //  sufficient space for allocation
-    if ( *(int*)((char*)walking_ptr+4) > size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
+    //  more space for allocation
+    if ( *(int*)((char*)walking_ptr+4)+HEADER_FREE_SIZE > size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
       //  mark found
       found = 1;
       //  update the available size of the current free chunk
@@ -114,8 +112,24 @@ void *Mem_Alloc(int size) {
       else
         break;
     }
-    else
+    //  exact same space for allocation
+    else if ( walking_ptr!=ptr_header && *(int*)((char*)walking_ptr+4)+HEADER_FREE_SIZE == size + PADDING_SIZE*2 + HEADER_ALLOCATED_SIZE ) {
+      found = 1;
+      if (*(int*)walking_ptr!=-1)
+        *(int*)prev_ptr += *(int*)walking_ptr;
+      else
+        *(int*)prev_ptr = -1;
+      *(int*)walking_ptr = size;
+      ret_ptr = (void*)((char*)walking_ptr+HEADER_ALLOCATED_SIZE);
+      if ( debug_enable==0 )
+        return ret_ptr;
+      else
+        break;
+    }
+    else {
+      prev_ptr = walking_ptr;
       walking_ptr = (*(int*)walking_ptr!=-1) ? (void*)((char*)walking_ptr + *(int*)walking_ptr) : NULL;
+    }
   };
 
   if (found==0) {
@@ -162,7 +176,7 @@ int  Mem_Free(void *ptr) {
     return 0;
   
   //  ptr must be within the initialized space
-  if ( debug_enable==1 && ( ptr_header==NULL || (long)ptr<(long)ptr_header || (long)ptr>=(long)((char*)ptr_header+total_size) ) ) {
+  if ( ( ptr_header==NULL || (long)ptr<(long)ptr_header || (long)ptr>=(long)((char*)ptr_header+total_size) ) ) {
     m_error = E_BAD_POINTER;
     return -1;
   }
@@ -199,31 +213,14 @@ int  Mem_Free(void *ptr) {
 
   while (1) {
     next_free_chunk = *(int*)prev_free_chunk==-1 ? NULL : (void*)((char*)prev_free_chunk+*(int*)prev_free_chunk);
-//    printf("\tin while loop : %08x\t%08x\t%08x\n", prev_free_chunk, ptr_new, next_free_chunk);
     if ( next_free_chunk == NULL || next_free_chunk > ptr_new ) {
-//      printf("\tbreak the while loop ! \n");
-//      printf("\tnow : %08x\t%08x\t%08x\n", prev_free_chunk, ptr_new, next_free_chunk);
       break;
     }
     prev_free_chunk = next_free_chunk;
   }
-//  printf("%08x\t%08x\t%08x\n", prev_free_chunk, ptr_new, next_free_chunk);
-
-  //  more rigorous boundary checks
-  if ( (char*)ptr - PADDING_SIZE - HEADER_ALLOCATED_SIZE < (char*)prev_free_chunk + HEADER_FREE_SIZE + *(int*)((char*)prev_free_chunk+4) ) {
-    m_error = E_BAD_POINTER;
-    return -1;
-  }
-
-  if ( (long)((char*)ptr + allocated_size + PADDING_SIZE) > (next_free_chunk!=NULL ? (long)next_free_chunk : ((long)ptr_header + total_size)) ) {
-//    printf("\n\nERROR : %08x %d %08x %d %08x %08x\n", ptr, allocated_size, ptr+allocated_size+PADDING_SIZE, (next_free_chunk!=NULL), (long)next_free_chunk, (long)ptr_header+total_size);
-    m_error = E_PADDING_OVERWRITTEN;
-    return -1;
-  }
 
   //  insert new element into free list
   *(int*)ptr_new = (next_free_chunk==NULL) ? -1 : ( (char*)next_free_chunk - (char*)ptr_new );
-//  printf("here : %d\n", *(int*)ptr_new);
   *(int*)((char*)ptr_new+4) = additional_space;
   if ( debug_enable==1 )
     for ( tmp = (int*)((char*)ptr_new + HEADER_FREE_SIZE); tmp < (int*)((char*)ptr_new + HEADER_FREE_SIZE + additional_space); tmp ++ )
