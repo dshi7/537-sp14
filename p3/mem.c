@@ -29,6 +29,7 @@ int debug_enable;
 int m_error;
 
 void *ptr_header = NULL;
+int init = 0;
 int PADDING_SIZE;
 
 int total_size;
@@ -36,15 +37,16 @@ int total_size;
 int Mem_Init(int sizeOfRegion, int debug) {
 
   //  called only once by a process using your routine
-  if(ptr_header != NULL) {
+  if(init==1 || sizeOfRegion<=0) {
     m_error = E_BAD_ARGS;
     return -1;
   }
 
+  init = 1;
+
   int fd = open("/dev/zero", O_RDWR);   //  file description
 
-//  total_size = sizeOfRegion + 2*PADDING_SIZE;
-  total_size = sizeOfRegion;
+  total_size = sizeOfRegion+HEADER_FREE_SIZE;
 
   ptr_header = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 
@@ -55,7 +57,7 @@ int Mem_Init(int sizeOfRegion, int debug) {
   close(fd);
 
   *(int*)ptr_header = -1;
-  *(int*)((char*)ptr_header+4) = total_size-HEADER_FREE_SIZE;
+  *(int*)((char*)ptr_header+4) = sizeOfRegion;
 
   PADDING_SIZE = (debug==1)?64:0;
   //  debug mode setup starts
