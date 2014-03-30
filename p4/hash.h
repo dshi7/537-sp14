@@ -4,9 +4,9 @@
 
 #include "list.h"
 
-typedef struct hash {
+typedef struct hash_t {
 
-  int bucket_num;
+  int size;
   list_t **hash_table;
 
 } hash_t;

@@ -2,11 +2,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #include "xchg.h"
 
 #define _SPIN_H_
 
-typedef struct  {
+typedef struct  _spinlock_t {
   int flag; //  0 for free and 1 for held
 } _spinlock_t ;
 

@@ -18,6 +18,7 @@
 #include <pthread.h>
 #include "spin.h"
 #include "counter.h"
+#include "list.h"
 
 int main(int argc, char** argv) {
 

@@ -1,15 +1,11 @@
-#ifndef  _LIST_H_
-
-#include "spin.h"
-
+#ifdef  _LIST_H_
 #define _LIST_H_
 
+#define "spin.h"
+
 typedef struct list_t {
-
-  unsigned int k;
-  void  *v;
-  struct list_t *next;
-
+  void  *val;
+  list_t *next;
 } list_t;
 
 void  List_Init(list_t *list);
