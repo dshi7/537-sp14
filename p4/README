@@ -1,0 +1,37 @@
+Before running:
+------------------------
+1) Copy test.csh, run_all_tests.csh to your project directory.
+2) Make sure the test.csh, run_all_tests.csh have the execute permission.
+   Otherwise, use
+   $$$]% chmod +x ./test.csh
+   $$$]% chmod +x ./run_all_tests.csh
+
+Usage:
+------
+$$$]% ./run_all_tests.csh 
+        --> to run all the tests and generate the "grade.txt"
+$$$]% ./test.csh <test_nr> 
+        --> to run a particular test 
+
+Released Test Cases: 
+
+1  README file
+2  Makefile
+3  No pthread lock/unlock routines
+
+4  simple counter increment
+5  simple counter decrement
+
+6  simple list insert
+7  simple list delete
+8  delete non-existing list element
+
+9  simple hash insert
+10 simple hash delete
+11 delete non-existing hash table element
+
+Also, see "README-stress" for the details of the following stress testing cases.
+
+stress testing: counter
+stress testing: list
+stress testing: hash table

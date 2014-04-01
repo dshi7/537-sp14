@@ -1,0 +1,34 @@
+To do:
+- create a testing directory 
+- cp ~cs537-3/test/p4/stress-test/* <your test directory>
+- cd <your test directory>
+- the Makefile assumes that your files are called:
+spin.c spin.h
+counter.c counter.h
+list.c list.h
+hash.c hash.h
+
+If your files are not called so, you need to either change the names or change
+the Makefile.
+
+Copy above files to your test directory.
+
+- make
+- ./testCounter (this test your counter library)
+- ./testList
+- ./testHash
+
+Note: 
+1. don't forget to type setenv LD_LIBRARY_PATH .
+2. testcount.c stress test your libcounter.so
+if your lib is thread-safe, you should get a "congrats" message
+if not, you will get an "argghh" message
+
+similarly, testhash.c stress test your libhash.so; testlist.c stress test your
+liblist.so
+
+3. remember to run on machine that has more than one processor
+e.g., use mumble-??.cs.wisc.edu
+or best-mumble.cs.wisc.edu
+
+
