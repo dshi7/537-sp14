@@ -17,6 +17,7 @@
 
 void  Counter_Init (counter_t *c, int value) {
   c->val = value;
+  spinlock_init(&(c->spinlock));
 }
 
 int Counter_GetValue (counter_t *c) {
@@ -24,10 +25,14 @@ int Counter_GetValue (counter_t *c) {
 }
 
 void  Counter_Increment (counter_t *c) {
+  spinlock_acquire(&(c->spinlock));
   ++ (c->val);
+  spinlock_release(&(c->spinlock));
 }
 
 void  Counter_Decrement (counter_t *c) {
+  spinlock_acquire(&(c->spinlock));
   -- (c->val);
+  spinlock_release(&(c->spinlock));
 }
 

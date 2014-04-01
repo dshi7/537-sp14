@@ -1,5 +1,6 @@
 #ifndef _COUNTER_H_
 
+#include "spin.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -7,6 +8,7 @@
 
 typedef struct {
   int val;
+  spinlock spinlock;
 } counter_t;
 
 void  Counter_Init (counter_t *c, int value);

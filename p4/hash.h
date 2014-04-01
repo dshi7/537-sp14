@@ -7,7 +7,8 @@
 typedef struct hash_t {
 
   int size;
-  list_t **hash_table;
+  list_t *hash_table;
+  spinlock hash_lock;
 
 } hash_t;
 

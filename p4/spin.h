@@ -3,19 +3,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include "xchg.h"
 
 #define _SPIN_H_
 
-typedef struct  _spinlock_t {
-  int flag; //  0 for free and 1 for held
-} _spinlock_t ;
+typedef struct spinlock {
+  volatile unsigned int flag; //  0 for free and 1 for held
+} spinlock ;
 
-void  spinlock_init (_spinlock_t *lock);
+void  spinlock_init (spinlock *lock);
 
-void  spinlock_acquire (_spinlock_t *lock);
+void  spinlock_acquire (spinlock *lock);
 
-void  spinlock_release (_spinlock_t *lock);
+void  spinlock_release (spinlock *lock);
 
 
 #endif
