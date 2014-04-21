@@ -6,12 +6,21 @@ pthread_cond_t cond;
 
 int max_threads;
 int max_buffers;
-int buffer_demand;  
+int buffer_work_num;
+int buffer_wait_num;
 int sff_bs_value;
 
 //  store worker threads in array
 pthread_t *work_threads;
 int *work_threads_status; 
+
+void  status_info (int *work_threads_status, int max_threads) {
+  int i;
+  printf("status : ");
+  for (i=0; i<max_threads; i++)
+    printf("%8d", work_threads_status[i]);
+  printf("\n");
+}
 
 typedef struct _node_t {
   int val;
@@ -25,28 +34,42 @@ typedef struct _queue {
 
 queue buf_wait_queue;
 
-void  queue_init (queue &wait_queue) {
+void  queue_init (queue *wait_queue) {
   //  Create a sentinel
   node_t *new_node = malloc(sizeof(node_t));
   new_node->next = NULL;
   wait_queue->head = new_node;
   wait_queue->tail = new_node;
+  buffer_work_num = 0;
+  buffer_wait_num = 0;
 }
 
-void   queue_push (queue &wait_queue, int val) {
+void   queue_push (queue *wait_queue, int val) {
   node_t *new_node = malloc(sizeof(node_t));
   new_node->val = val;
   new_node->next = NULL;
   wait_queue->tail->next = new_node;
-  wait_queue->tail = new_node;
+  wait_queue->tail = wait_queue->tail->next;
 }
 
-int queue_peek (queue &wait_queue) {
-  return  wait_queue->head->next->val;
+int queue_peek (queue *wait_queue) {
+  if ( wait_queue->head->next!=NULL )
+    return  wait_queue->head->next->val;
+  else
+    return -1;
 }
 
-void  pop (queue &wait_queue) {
-  wait_queue->head->next = wait_queue->head->next->next;
+void  queue_pop (queue *wait_queue) {
+  if (wait_queue->head->next!=NULL)
+    wait_queue->head->next = wait_queue->head->next->next;
+}
+
+void  queue_info (queue *wait_queue) {
+  node_t *tmp;
+  printf("queue : ");
+  for ( tmp=wait_queue->head; tmp->next!=NULL; tmp = tmp->next )
+    printf("%8d  ", tmp->next->val);
+  printf("\n");
 }
 
 
@@ -63,7 +86,6 @@ void  pop (queue &wait_queue) {
 // CS537: TODO make it parse the new arguments too
 void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_value, int argc, char *argv[])
 {
-  printf("%d\n", argc );
   if (argc < 5 || argc > 6) {
     fprintf(stderr, "Usage: %s [portnum] [threads] [buffers] [schedalg] [N (for SFF-BS only)]\n", argv[0]);
     exit(1);
@@ -85,21 +107,18 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
 //  Producer functions
 void  accept_request (int request_fd)
 {
-  if ( head==-1 ) {
-    buffer_pool[0] = request_fd;
-    head = 0; tail = 1;
-  }
-  else {
-    buffer_pool[tail] = request_fd;
-    tail = (tail+1)%max_buffers;
-  }
-  buffer_demand++;
+  queue_push (&buf_wait_queue, request_fd);
+  ++ buffer_wait_num;
+  queue_info (&buf_wait_queue);
 }
 
 void  Master_thread_accept_request (int request_fd)
 {
+  accept_request (request_fd);
+  return;
+  printf("master thread : %d\n", request_fd);
   pthread_mutex_lock (&mutex);
-  while ( buffer_demand==max_buffers )
+  while ( buffer_work_num+buffer_wait_num==max_buffers )
     pthread_cond_wait (&cond, &mutex);
   accept_request (request_fd);
   pthread_cond_broadcast (&cond);
@@ -109,15 +128,31 @@ void  Master_thread_accept_request (int request_fd)
 //  Consumer functions
 void  handle_request (void)
 {
-  
+  queue_info (&buf_wait_queue);
+  int connfd = queue_peek(&buf_wait_queue);
+  printf ("handle request : %d\n", connfd);
+  if (connfd==-1) {
+    printf("here\n");
+    return;
+  }
+  queue_pop(&buf_wait_queue);
+  buffer_work_num++;
+  buffer_wait_num--;
+  requestHandle (connfd);
+  Close (connfd);
+  buffer_work_num--;
 }
 
-void  Worker_thread_handle_request (void) {
+void  Worker_thread_handle_request (void *t) {
+  return;
+  printf("thread %d starts\n", (int)t);
   pthread_mutex_lock (&mutex);
-  while ( buffer_demand==0 )
+  printf("thread %d lock\n", (int)t);
+  while ( buffer_wait_num==0 )
     pthread_cond_wait (&cond, &mutex);
-  handle_request ();
+//  handle_request (t);
   pthread_cond_broadcast (&cond);
+  printf("thread %d unlock\n", (int)t);
   pthread_mutex_unlock (&mutex);
 }
 
@@ -130,52 +165,44 @@ int main(int argc, char *argv[])
 
   getargs(&port, &max_threads, &max_buffers, schedalg, &sff_bs_value, argc, argv);
 
-  //  Initialize the buffer pool
-  buffer_pool = calloc(max_buffers, sizeof(int));
-  head = -1;
-  tail = -1;
-  buffer_demand = 0;
+  queue_init(&buf_wait_queue);
+
+  //  Initialize mutex and condition variable objects
+  pthread_mutex_init (&mutex, NULL);
+  pthread_cond_init (&cond, NULL);
+  
+  // 
+  // CS537: TODO create some worker threads using pthread_create ...
+  //
+
 
   //  Create a pool of worker threads
   int rc, t;
   work_threads = (pthread_t*)calloc(max_threads, sizeof(pthread_t));
+  work_threads_status = (int*)calloc(max_threads, sizeof(int)); 
+//  status_info (work_threads_status, max_threads);
+
+  //  0 : wait ; 1 : work
+  printf("thread_num = %d\n", max_threads);
   for ( t=0; t<max_threads; t++ ) {
-    rc = pthread_create (&work_threads[t], NULL, Worker_thread_handle_request, NULL);
+    work_threads_status[t] = 0;
+//    rc = pthread_create (&work_threads[t], NULL, (void*)Worker_thread_handle_request, (void*)t);
+    rc = 0;
     if (rc) {
       fprintf(stderr, "ERROR : return code from pthread_create() is %d\n", rc);
       exit(-1);
     }
   }
 
-  //  Initialize mutex and condition variable objects
-  pthread_mutex_init (&mutex, NULL);
-  pthread_cond_init (&cond, NULL);
-  
-
-  //  Create a consumer thread
-
-  // 
-  // CS537: TODO create some worker threads using pthread_create ...
-  //
-
   listenfd = Open_listenfd(port);
 
-  pthread_cond_t myconvar = PTHREAD_COND_INITIALIZER;
-
   while (1) {
+    printf ("wait \n");
     clientlen = sizeof(clientaddr);
     connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-
     Master_thread_accept_request (connfd);
-
-    // 
-    // CS537: In general, don't handle the request in the main thread.  TODO In
-    // multi-threading mode, the main thread needs to save the relevant info in
-    // a buffer and have one of the worker threads do the work.
-    // 
-    requestHandle(connfd);
-
-    Close(connfd); }
+//    handle_request();
+  }
 
 }
 
