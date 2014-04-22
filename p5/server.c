@@ -22,6 +22,10 @@ void  status_info (int *work_threads_status, int max_threads) {
   printf("\n");
 }
 
+void  buffer_usage (void) {
+  printf ("Buffer Usage : %d waiting and %d running\n", buffer_wait_num, buffer_work_num);
+}
+
 typedef struct _node_t {
   int val;
   struct _node_t *next;
@@ -141,13 +145,11 @@ void  handle_request (void)
   printf ("handle request : %d\n", connfd);
 
   if (connfd==-1) {
-    printf("here\n");
+    printf("Error : request fd is -1.\n");
     return;
   }
 
   queue_pop(&buf_wait_queue);
-  queue_info (&buf_wait_queue);
-  return;
 
   buffer_work_num++;
   buffer_wait_num--;
@@ -156,7 +158,8 @@ void  handle_request (void)
   buffer_work_num--;
 }
 
-void  Worker_thread_handle_request (void *t) {
+void  Worker_thread_handle_request (void *t) 
+{
 //  printf("thread %d starts\n", (int)t);
   pthread_mutex_lock (&mutex);
 //  printf("thread %d lock\n", (int)t);
@@ -207,7 +210,6 @@ int main(int argc, char *argv[])
   listenfd = Open_listenfd(port);
 
   while (1) {
-    printf ("\n\nwait \n");
     clientlen = sizeof(clientaddr);
     connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
     Master_thread_accept_request (connfd);
