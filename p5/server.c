@@ -60,14 +60,22 @@ int queue_peek (queue *wait_queue) {
 }
 
 void  queue_pop (queue *wait_queue) {
-  if (wait_queue->head->next!=NULL)
+  //  make sure tail->next is always NULL
+  if (wait_queue->head->next!=NULL) {
     wait_queue->head->next = wait_queue->head->next->next;
+
+    //  tricky!!!
+    if (wait_queue->head->next == NULL)
+      wait_queue->tail = wait_queue->head;
+  }
+  else
+    printf ("Warning : pop an empty queue\n");
 }
 
 void  queue_info (queue *wait_queue) {
   node_t *tmp;
   printf("queue : ");
-  for ( tmp=wait_queue->head; tmp->next!=NULL; tmp = tmp->next )
+  for ( tmp=wait_queue->head; tmp->next != NULL; tmp = tmp->next )
     printf("%8d  ", tmp->next->val);
   printf("\n");
 }
@@ -107,16 +115,14 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
 //  Producer functions
 void  accept_request (int request_fd)
 {
+  printf ("accept request : %d\n", request_fd);
   queue_push (&buf_wait_queue, request_fd);
   ++ buffer_wait_num;
-  queue_info (&buf_wait_queue);
 }
 
 void  Master_thread_accept_request (int request_fd)
 {
-  accept_request (request_fd);
-  return;
-  printf("master thread : %d\n", request_fd);
+  printf("request file descriptor: %d\n", request_fd);
   pthread_mutex_lock (&mutex);
   while ( buffer_work_num+buffer_wait_num==max_buffers )
     pthread_cond_wait (&cond, &mutex);
@@ -129,13 +135,20 @@ void  Master_thread_accept_request (int request_fd)
 void  handle_request (void)
 {
   queue_info (&buf_wait_queue);
+
   int connfd = queue_peek(&buf_wait_queue);
+
   printf ("handle request : %d\n", connfd);
+
   if (connfd==-1) {
     printf("here\n");
     return;
   }
+
   queue_pop(&buf_wait_queue);
+  queue_info (&buf_wait_queue);
+  return;
+
   buffer_work_num++;
   buffer_wait_num--;
   requestHandle (connfd);
@@ -144,15 +157,14 @@ void  handle_request (void)
 }
 
 void  Worker_thread_handle_request (void *t) {
-  return;
-  printf("thread %d starts\n", (int)t);
+//  printf("thread %d starts\n", (int)t);
   pthread_mutex_lock (&mutex);
-  printf("thread %d lock\n", (int)t);
+//  printf("thread %d lock\n", (int)t);
   while ( buffer_wait_num==0 )
     pthread_cond_wait (&cond, &mutex);
-//  handle_request (t);
+  handle_request ();
   pthread_cond_broadcast (&cond);
-  printf("thread %d unlock\n", (int)t);
+//  printf("thread %d unlock\n", (int)t);
   pthread_mutex_unlock (&mutex);
 }
 
@@ -180,14 +192,12 @@ int main(int argc, char *argv[])
   int rc, t;
   work_threads = (pthread_t*)calloc(max_threads, sizeof(pthread_t));
   work_threads_status = (int*)calloc(max_threads, sizeof(int)); 
-//  status_info (work_threads_status, max_threads);
 
   //  0 : wait ; 1 : work
   printf("thread_num = %d\n", max_threads);
   for ( t=0; t<max_threads; t++ ) {
     work_threads_status[t] = 0;
-//    rc = pthread_create (&work_threads[t], NULL, (void*)Worker_thread_handle_request, (void*)t);
-    rc = 0;
+    rc = pthread_create (&work_threads[t], NULL, (void*)Worker_thread_handle_request, (void*)t);
     if (rc) {
       fprintf(stderr, "ERROR : return code from pthread_create() is %d\n", rc);
       exit(-1);
@@ -197,17 +207,12 @@ int main(int argc, char *argv[])
   listenfd = Open_listenfd(port);
 
   while (1) {
-    printf ("wait \n");
+    printf ("\n\nwait \n");
     clientlen = sizeof(clientaddr);
     connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
     Master_thread_accept_request (connfd);
-//    handle_request();
   }
 
 }
-
-
-
-
 
 
