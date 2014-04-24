@@ -10,6 +10,12 @@ int buffer_work_num;
 int buffer_wait_num;
 int sff_bs_value;
 
+int sched_alg;  
+//  0 : FIFO
+//  1 : SFF
+//  2 : SFF-BS
+//  -1: invalid
+
 //  store worker threads in array
 pthread_t *work_threads;
 int *work_threads_status; 
@@ -49,11 +55,14 @@ void  queue_init (queue *wait_queue) {
 }
 
 void   queue_push (queue *wait_queue, int val) {
-  node_t *new_node = malloc(sizeof(node_t));
-  new_node->val = val;
-  new_node->next = NULL;
-  wait_queue->tail->next = new_node;
-  wait_queue->tail = wait_queue->tail->next;
+  if ( sched_alg==0 ) {
+    //  FIFO
+    node_t *new_node = malloc(sizeof(node_t));
+    new_node->val = val;
+    new_node->next = NULL;
+    wait_queue->tail->next = new_node;
+    wait_queue->tail = wait_queue->tail->next;
+  }
 }
 
 int queue_peek (queue *wait_queue) {
@@ -106,10 +115,17 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
   *threads = atoi(argv[2]);
   *buffers = atoi(argv[3]);
   strcpy (schedalg, argv[4]);
-  if ( argc == 5 )
+  if ( argc == 5 ) {
+    if ( strcmp(schedalg, "FIFO")==0 )
+      sched_alg = 0;
+    if ( strcmp(schedalg, "SFF")==0 )
+      sched_alg = 1;
     return;
-  else if ( argc == 6 && strcmp(schedalg, "SFF-BS")==0 )
+  }
+  else if ( argc == 6 && strcmp(schedalg, "SFF-BS")==0 ) {
     *sff_bs_value = atoi(argv[5]);
+    sched_alg = 2;
+  }
   else {
     fprintf(stderr, "Usage: %s [portnum] [threads] [buffers] [schedalg] [N (for SFF-BS only)]\n", argv[0]);
     exit(1);
@@ -119,14 +135,14 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
 //  Producer functions
 void  accept_request (int request_fd)
 {
-  printf ("accept request : %d\n", request_fd);
+//  printf ("accept request : %d\n", request_fd);
   queue_push (&buf_wait_queue, request_fd);
   ++ buffer_wait_num;
 }
 
 void  Master_thread_accept_request (int request_fd)
 {
-  printf("request file descriptor: %d\n", request_fd);
+//  printf("request file descriptor: %d\n", request_fd);
   pthread_mutex_lock (&mutex);
   while ( buffer_work_num+buffer_wait_num==max_buffers )
     pthread_cond_wait (&cond, &mutex);
@@ -138,11 +154,11 @@ void  Master_thread_accept_request (int request_fd)
 //  Consumer functions
 void  handle_request (void)
 {
-  queue_info (&buf_wait_queue);
+//  queue_info (&buf_wait_queue);
 
   int connfd = queue_peek(&buf_wait_queue);
 
-  printf ("handle request : %d\n", connfd);
+//  printf ("handle request : %d\n", connfd);
 
   if (connfd==-1) {
     printf("Error : request fd is -1.\n");
@@ -160,15 +176,17 @@ void  handle_request (void)
 
 void  Worker_thread_handle_request (void *t) 
 {
-//  printf("thread %d starts\n", (int)t);
-  pthread_mutex_lock (&mutex);
-//  printf("thread %d lock\n", (int)t);
-  while ( buffer_wait_num==0 )
-    pthread_cond_wait (&cond, &mutex);
-  handle_request ();
-  pthread_cond_broadcast (&cond);
-//  printf("thread %d unlock\n", (int)t);
-  pthread_mutex_unlock (&mutex);
+  while (1) {
+    //  printf("thread %d starts\n", (int)t);
+    pthread_mutex_lock (&mutex);
+    //  printf("thread %d lock\n", (int)t);
+    while ( buffer_wait_num==0 )
+      pthread_cond_wait (&cond, &mutex);
+    handle_request ();
+    pthread_cond_broadcast (&cond);
+    //  printf("thread %d unlock\n", (int)t);
+    pthread_mutex_unlock (&mutex);
+  }
 }
 
 int main(int argc, char *argv[])
@@ -197,7 +215,7 @@ int main(int argc, char *argv[])
   work_threads_status = (int*)calloc(max_threads, sizeof(int)); 
 
   //  0 : wait ; 1 : work
-  printf("thread_num = %d\n", max_threads);
+//  printf("thread_num = %d\n", max_threads);
   for ( t=0; t<max_threads; t++ ) {
     work_threads_status[t] = 0;
     rc = pthread_create (&work_threads[t], NULL, (void*)Worker_thread_handle_request, (void*)t);
