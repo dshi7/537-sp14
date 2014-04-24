@@ -10,7 +10,7 @@ int buffer_work_num;
 int buffer_wait_num;
 int sff_bs_value;
 
-int sched_alg;  
+int sched_alg_code;  
 //  0 : FIFO
 //  1 : SFF
 //  2 : SFF-BS
@@ -34,6 +34,7 @@ void  buffer_usage (void) {
 
 typedef struct _node_t {
   int val;
+  int size;
   struct _node_t *next;
 } node_t;
 
@@ -43,6 +44,14 @@ typedef struct _queue {
 } queue;
 
 queue buf_wait_queue;
+
+void  queue_info (queue *wait_queue) {
+  node_t *tmp;
+  printf("queue : ");
+  for ( tmp=wait_queue->head; tmp->next != NULL; tmp = tmp->next )
+    printf("%8d  ", tmp->next->val);
+  printf("\n");
+}
 
 void  queue_init (queue *wait_queue) {
   //  Create a sentinel
@@ -55,13 +64,31 @@ void  queue_init (queue *wait_queue) {
 }
 
 void   queue_push (queue *wait_queue, int val) {
-  if ( sched_alg==0 ) {
-    //  FIFO
+  if ( sched_alg_code==0 ) {
+    //  FIFO  or dynamic request
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
+    new_node->size = 0;
     new_node->next = NULL;
     wait_queue->tail->next = new_node;
     wait_queue->tail = wait_queue->tail->next;
+  }
+  else if ( sched_alg_code==1  ) { //  SFF static request
+//    printf ("here\n");
+//    queue_info (wait_queue);
+    node_t *new_node = malloc(sizeof(node_t));
+    new_node->val = val;
+    new_node->size = requestSize (val);
+    //
+    node_t *tmp = wait_queue->head;
+    while ( tmp->next!=NULL && (tmp->next->size < new_node->size) )
+      tmp = tmp->next;  //  tmp is not NULL
+    // insert here and break
+    new_node->next = tmp->next;
+    tmp->next = new_node;
+    if (tmp->next->next==NULL)
+      wait_queue->tail = tmp->next;
+//    queue_info (wait_queue);
   }
 }
 
@@ -83,14 +110,6 @@ void  queue_pop (queue *wait_queue) {
   }
   else
     printf ("Warning : pop an empty queue\n");
-}
-
-void  queue_info (queue *wait_queue) {
-  node_t *tmp;
-  printf("queue : ");
-  for ( tmp=wait_queue->head; tmp->next != NULL; tmp = tmp->next )
-    printf("%8d  ", tmp->next->val);
-  printf("\n");
 }
 
 
@@ -117,14 +136,14 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
   strcpy (schedalg, argv[4]);
   if ( argc == 5 ) {
     if ( strcmp(schedalg, "FIFO")==0 )
-      sched_alg = 0;
+      sched_alg_code = 0;
     if ( strcmp(schedalg, "SFF")==0 )
-      sched_alg = 1;
+      sched_alg_code = 1;
     return;
   }
   else if ( argc == 6 && strcmp(schedalg, "SFF-BS")==0 ) {
     *sff_bs_value = atoi(argv[5]);
-    sched_alg = 2;
+    sched_alg_code = 2;
   }
   else {
     fprintf(stderr, "Usage: %s [portnum] [threads] [buffers] [schedalg] [N (for SFF-BS only)]\n", argv[0]);
