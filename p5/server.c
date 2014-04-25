@@ -21,7 +21,6 @@ int sched_alg_code;
 //  store worker threads in array
 pthread_t *work_threads;
 pthread_mutex_t *work_locks;
-pthread_t master_thread;
 
 typedef struct _queue 
 {
@@ -156,11 +155,10 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
     sched_alg_code = 0;
   if ( strcmp(schedalg, "SFF")==0 )
     sched_alg_code = 1;
-  if ( strcmp(schedalg, "SFF-BS")==0 ) {
+  if ( strcmp(schedalg, "SFF-BS")==0 ) 
     sched_alg_code = 2;
   if ( argc==6 )
     *sff_bs_value = atoi(argv[5]);
-  }
 }
 
 //  Producer functions
@@ -206,7 +204,7 @@ void  handle_request (int th_index)
   if ( node.is_static )
     requestServeStatic (th_index, &node, node.filename, node.st_size);
   else
-    requestServeDynamic (th_index, node.val, node.filename, node.cgiargs);
+    requestServeDynamic (th_index, connfd, node.filename, node.cgiargs);
 
   Close (connfd);
 
@@ -262,10 +260,10 @@ int main(int argc, char *argv[])
   int rc, t;
   work_threads = (pthread_t*)calloc(max_threads, sizeof(pthread_t));
   work_locks = (pthread_mutex_t*)calloc(max_threads, sizeof(pthread_mutex_t));
-  stat_thread_id = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
-  stat_thread_count = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
-  stat_thread_static = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
-  stat_thread_dynamic = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
+  stat_thread_id = (int*)calloc(max_threads, sizeof(int));
+  stat_thread_count = (int*)calloc(max_threads, sizeof(int));
+  stat_thread_static = (int*)calloc(max_threads, sizeof(int));
+  stat_thread_dynamic = (int*)calloc(max_threads, sizeof(int));
 
   //  0 : wait ; 1 : work
   for ( t=0; t<max_threads; t++ ) {
@@ -275,7 +273,7 @@ int main(int argc, char *argv[])
     rc = pthread_create (&work_threads[t], NULL, &Worker_thread_handle_request, (void*)&t);
 
     //  Initialize those usage statistics
-    stat_thread_id[t] = work_threads[t];
+    stat_thread_id[t] = t;
     stat_thread_count[t] = 0;
     stat_thread_static[t] = 0;
     stat_thread_dynamic[t] = 0;

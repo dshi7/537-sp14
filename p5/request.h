@@ -1,10 +1,10 @@
 #ifndef __REQUEST_H__
 
 //  usage statistics in part 3
-unsigned int *stat_thread_id;
-unsigned int *stat_thread_count;
-unsigned int *stat_thread_static;
-unsigned int *stat_thread_dynamic;
+int *stat_thread_id;
+int *stat_thread_count;
+int *stat_thread_static;
+int *stat_thread_dynamic;
 
 typedef struct _node_t {
   int val;
