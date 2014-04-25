@@ -2,7 +2,8 @@
 #include "request.h"
 
 pthread_mutex_t mutex;
-pthread_cond_t cond;
+pthread_cond_t not_empty;
+pthread_cond_t not_full;
 
 int max_threads;
 int max_buffers;
@@ -19,19 +20,8 @@ int sched_alg_code;
 
 //  store worker threads in array
 pthread_t *work_threads;
-int *work_threads_status; 
-
-void  status_info (int *work_threads_status, int max_threads) {
-  int i;
-  printf("status : ");
-  for (i=0; i<max_threads; i++)
-    printf("%8d", work_threads_status[i]);
-  printf("\n");
-}
-
-void  buffer_usage (void) {
-  printf ("Buffer Usage : %d waiting and %d running\n", buffer_wait_num, buffer_work_num);
-}
+pthread_mutex_t *work_locks;
+pthread_t master_thread;
 
 typedef struct _queue 
 {
@@ -90,7 +80,7 @@ void   queue_push (queue *wait_queue, int val)
     node_t *tmp = wait_queue->head;
     //  pre-process the request
     requestPreProcess (new_node);
-    while ( tmp->next!=NULL && (tmp->next->st_size < new_node->st_size) )
+    while ( tmp->next!=NULL && (tmp->next->st_size <= new_node->st_size) )
       tmp = tmp->next;  //  tmp is not NULL
     // insert here and break
     new_node->next = tmp->next;
@@ -109,7 +99,7 @@ void   queue_push (queue *wait_queue, int val)
     requestPreProcess (new_node);
     int  max_search = sff_bs_value - buffer_head_hist%sff_bs_value;
     int  cnt_search = 1;
-    while ( cnt_search<max_search && tmp->next!=NULL && (tmp->next->st_size < new_node->st_size) ) {
+    while ( cnt_search<max_search && tmp->next!=NULL && (tmp->next->st_size <= new_node->st_size) ) {
       tmp = tmp->next;  //  tmp is not NULL
       ++ cnt_search;
     }
@@ -174,27 +164,15 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
 }
 
 //  Producer functions
-void  accept_request (int request_fd)
+void  accept_request (int fd)
 {
-  queue_push (&buf_wait_queue, request_fd);
+  queue_push (&buf_wait_queue, fd);
   ++ buffer_wait_num;
-}
-
-void  Master_thread_accept_request (int request_fd)
-{
-//  printf("request file descriptor: %d\n", request_fd);
-  pthread_mutex_lock (&mutex);
-  while ( buffer_work_num+buffer_wait_num==max_buffers )
-    pthread_cond_wait (&cond, &mutex);
-  accept_request (request_fd);
-  pthread_cond_signal (&cond);
-  pthread_mutex_unlock (&mutex);
 }
 
 //  Consumer functions
 void  handle_request (int th_index)
 {
-
   node_t node = queue_peek(&buf_wait_queue);
   int connfd = node.val;
 
@@ -224,7 +202,6 @@ void  handle_request (int th_index)
 
   buffer_work_num++;
   buffer_wait_num--;
-//  requestHandle (th_index, &node);
 
   if ( node.is_static )
     requestServeStatic (th_index, &node, node.filename, node.st_size);
@@ -232,23 +209,32 @@ void  handle_request (int th_index)
     requestServeDynamic (th_index, node.val, node.filename, node.cgiargs);
 
   Close (connfd);
+
   buffer_work_num--;
 }
 
 void  *Worker_thread_handle_request (void *t) 
 {
+  int th_index = *(int*)t;
   while (1) {
-    //  printf("thread %d starts\n", (int)t);
-    pthread_mutex_lock (&mutex);
-    //  printf("thread %d lock\n", (int)t);
+    pthread_mutex_lock (&work_locks[th_index]);
     while ( buffer_wait_num==0 )
-      pthread_cond_wait (&cond, &mutex);
-    handle_request ( *(int*)t );
-    pthread_cond_signal (&cond);
-    //  printf("thread %d unlock\n", (int)t);
-    pthread_mutex_unlock (&mutex);
+      pthread_cond_wait (&not_empty, &work_locks[th_index]);
+    handle_request (th_index);
+    pthread_cond_signal (&not_full);
+    pthread_mutex_unlock (&work_locks[th_index]);
   }
   return t;
+}
+
+void Master_thread_accept_request (int request_fd)
+{
+  pthread_mutex_lock (&mutex);
+  while ( buffer_work_num+buffer_wait_num==max_buffers )
+    pthread_cond_wait (&not_full, &mutex);
+  accept_request (request_fd);
+  pthread_cond_signal (&not_empty);
+  pthread_mutex_unlock (&mutex);
 }
 
 int main(int argc, char *argv[])
@@ -264,7 +250,8 @@ int main(int argc, char *argv[])
 
   //  Initialize mutex and condition variable objects
   pthread_mutex_init (&mutex, NULL);
-  pthread_cond_init (&cond, NULL);
+  pthread_cond_init (&not_empty, NULL);
+  pthread_cond_init (&not_full, NULL);
   
   // 
   // CS537: TODO create some worker threads using pthread_create ...
@@ -274,7 +261,7 @@ int main(int argc, char *argv[])
   //  Create a pool of worker threads
   int rc, t;
   work_threads = (pthread_t*)calloc(max_threads, sizeof(pthread_t));
-  work_threads_status = (int*)calloc(max_threads, sizeof(int)); 
+  work_locks = (pthread_mutex_t*)calloc(max_threads, sizeof(pthread_mutex_t));
   stat_thread_id = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
   stat_thread_count = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
   stat_thread_static = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
@@ -282,7 +269,9 @@ int main(int argc, char *argv[])
 
   //  0 : wait ; 1 : work
   for ( t=0; t<max_threads; t++ ) {
-    work_threads_status[t] = 0;
+
+    pthread_mutex_init (&work_locks[t], NULL);
+
     rc = pthread_create (&work_threads[t], NULL, &Worker_thread_handle_request, (void*)&t);
 
     //  Initialize those usage statistics
