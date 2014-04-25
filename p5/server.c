@@ -8,6 +8,7 @@ int max_threads;
 int max_buffers;
 int buffer_work_num;
 int buffer_wait_num;
+int buffer_head_hist = 0; //  for SFF-BS
 int sff_bs_value;
 
 int sched_alg_code;  
@@ -19,6 +20,12 @@ int sched_alg_code;
 //  store worker threads in array
 pthread_t *work_threads;
 int *work_threads_status; 
+
+//  usage statistics in part 3
+unsigned int *stat_thread_id;
+unsigned int *stat_thread_count;
+unsigned int *stat_thread_static;
+unsigned int *stat_thread_dynamic;
 
 void  status_info (int *work_threads_status, int max_threads) {
   int i;
@@ -74,8 +81,6 @@ void   queue_push (queue *wait_queue, int val) {
     wait_queue->tail = wait_queue->tail->next;
   }
   else if ( sched_alg_code==1  ) { //  SFF static request
-//    printf ("here\n");
-//    queue_info (wait_queue);
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
     new_node->size = requestSize (val);
@@ -88,7 +93,24 @@ void   queue_push (queue *wait_queue, int val) {
     tmp->next = new_node;
     if (tmp->next->next==NULL)
       wait_queue->tail = tmp->next;
-//    queue_info (wait_queue);
+  }
+  else if ( sched_alg_code==2  ) { //  SFF-BS static request
+    node_t *new_node = malloc(sizeof(node_t));
+    new_node->val = val;
+    new_node->size = requestSize (val);
+    //
+    node_t *tmp = wait_queue->head;
+    int  max_search = sff_bs_value - buffer_head_hist%sff_bs_value;
+    int  cnt_search = 1;
+    while ( cnt_search<max_search && tmp->next!=NULL && (tmp->next->size < new_node->size) ) {
+      tmp = tmp->next;  //  tmp is not NULL
+      ++ cnt_search;
+    }
+    // insert here and break
+    new_node->next = tmp->next;
+    tmp->next = new_node;
+    if (tmp->next->next==NULL)
+      wait_queue->tail = tmp->next;
   }
 }
 
@@ -126,7 +148,7 @@ void  queue_pop (queue *wait_queue) {
 // CS537: TODO make it parse the new arguments too
 void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_value, int argc, char *argv[])
 {
-  if (argc < 5 || argc > 6) {
+  if (argc == 1) {
     fprintf(stderr, "Usage: %s [portnum] [threads] [buffers] [schedalg] [N (for SFF-BS only)]\n", argv[0]);
     exit(1);
   }
@@ -134,20 +156,14 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
   *threads = atoi(argv[2]);
   *buffers = atoi(argv[3]);
   strcpy (schedalg, argv[4]);
-  if ( argc == 5 ) {
-    if ( strcmp(schedalg, "FIFO")==0 )
-      sched_alg_code = 0;
-    if ( strcmp(schedalg, "SFF")==0 )
-      sched_alg_code = 1;
-    return;
-  }
-  else if ( argc == 6 && strcmp(schedalg, "SFF-BS")==0 ) {
-    *sff_bs_value = atoi(argv[5]);
+  if ( strcmp(schedalg, "FIFO")==0 )
+    sched_alg_code = 0;
+  if ( strcmp(schedalg, "SFF")==0 )
+    sched_alg_code = 1;
+  if ( strcmp(schedalg, "SFF-BS")==0 ) {
     sched_alg_code = 2;
-  }
-  else {
-    fprintf(stderr, "Usage: %s [portnum] [threads] [buffers] [schedalg] [N (for SFF-BS only)]\n", argv[0]);
-    exit(1);
+  if ( argc==6 )
+    *sff_bs_value = atoi(argv[5]);
   }
 }
 
@@ -185,6 +201,7 @@ void  handle_request (void)
   }
 
   queue_pop(&buf_wait_queue);
+  buffer_head_hist++;
 
   buffer_work_num++;
   buffer_wait_num--;
@@ -193,7 +210,7 @@ void  handle_request (void)
   buffer_work_num--;
 }
 
-void  Worker_thread_handle_request (void *t) 
+void  *Worker_thread_handle_request (void *t) 
 {
   while (1) {
     //  printf("thread %d starts\n", (int)t);
@@ -206,6 +223,7 @@ void  Worker_thread_handle_request (void *t)
     //  printf("thread %d unlock\n", (int)t);
     pthread_mutex_unlock (&mutex);
   }
+  return t;
 }
 
 int main(int argc, char *argv[])
@@ -232,12 +250,22 @@ int main(int argc, char *argv[])
   int rc, t;
   work_threads = (pthread_t*)calloc(max_threads, sizeof(pthread_t));
   work_threads_status = (int*)calloc(max_threads, sizeof(int)); 
+  stat_thread_id = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
+  stat_thread_count = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
+  stat_thread_static = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
+  stat_thread_dynamic = (unsigned int*)calloc(max_threads, sizeof(unsigned int));
 
   //  0 : wait ; 1 : work
-//  printf("thread_num = %d\n", max_threads);
   for ( t=0; t<max_threads; t++ ) {
     work_threads_status[t] = 0;
-    rc = pthread_create (&work_threads[t], NULL, (void*)Worker_thread_handle_request, (void*)t);
+    rc = pthread_create (&work_threads[t], NULL, &Worker_thread_handle_request, (void*)&t);
+
+    //  Initialize those usage statistics
+    stat_thread_id[t] = work_threads[t];
+    stat_thread_count[t] = 0;
+    stat_thread_static[t] = 0;
+    stat_thread_dynamic[t] = 0;
+      
     if (rc) {
       fprintf(stderr, "ERROR : return code from pthread_create() is %d\n", rc);
       exit(-1);
