@@ -1,17 +1,17 @@
 #ifndef __REQUEST_H__
 
 //  usage statistics in part 3
-unsigned int *stat_thread_id;
-unsigned int *stat_thread_count;
-unsigned int *stat_thread_static;
-unsigned int *stat_thread_dynamic;
+int *stat_thread_id;
+int *stat_thread_count;
+int *stat_thread_static;
+int *stat_thread_dynamic;
 
 typedef struct _node_t {
   int val;
-  int is_static;
+  int st_size;
   char filename[8192];
   char cgiargs[8192];
-  int st_size;
+  int is_static;
   int stat_req_arrival;
   int stat_req_dispatch;
   int stat_req_read;
@@ -20,18 +20,13 @@ typedef struct _node_t {
   int stat_req_death;
   int stat_req_age;
   struct _node_t *next;
+  
 } node_t;
 
-void requestServeStatic(int th_index, node_t *node, char *filename, int filesize); 
+void requestPreProcess (node_t *node);
 
-void requestServeDynamic(int th_index, int fd, char *filename, char *cgiargs);
+void requestServeStatic(int th_index, node_t *node);
 
-void requestHandle (int th_index, node_t *node);
-
-void requestPreProcess (node_t *node); 
-
-int requestSize (int fd);
-
-int isStaticRequest (int fd);
+void requestServeDynamic(int th_index, node_t *node);
 
 #endif
