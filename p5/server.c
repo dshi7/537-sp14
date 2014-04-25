@@ -74,6 +74,7 @@ void   queue_push (queue *wait_queue, int val)
     new_node->val = val;
     new_node->size = 0;
     new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
+    new_node->stat_req_birth = buffer_head_hist;
     new_node->next = NULL;
     wait_queue->tail->next = new_node;
     wait_queue->tail = wait_queue->tail->next;
@@ -83,6 +84,7 @@ void   queue_push (queue *wait_queue, int val)
     new_node->val = val;
     new_node->size = requestSize (val);
     new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
+    new_node->stat_req_birth = buffer_head_hist;
     //
     node_t *tmp = wait_queue->head;
     while ( tmp->next!=NULL && (tmp->next->size < new_node->size) )
@@ -98,6 +100,7 @@ void   queue_push (queue *wait_queue, int val)
     new_node->val = val;
     new_node->size = requestSize (val);
     new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
+    new_node->stat_req_birth = buffer_head_hist;
     //
     node_t *tmp = wait_queue->head;
     int  max_search = sff_bs_value - buffer_head_hist%sff_bs_value;
@@ -201,17 +204,25 @@ void  handle_request (int th_index)
 
   queue_pop(&buf_wait_queue);
 
+  //  Stat-req-dispatch
+  struct timeval pickup_time;
+  gettimeofday (&pickup_time, NULL);
+  int pickup_time_ms = (int)(pickup_time.tv_sec/1000 + pickup_time.tv_usec*1000);
+  node.stat_req_dispatch = pickup_time_ms - node.stat_req_arrival;
+
   ++ stat_thread_count[th_index];
   if ( isStaticRequest(connfd) )
     ++ stat_thread_static[th_index];
   else
     ++ stat_thread_dynamic[th_index];
 
+  node.stat_req_death = buffer_head_hist;
   buffer_head_hist++;
 
   buffer_work_num++;
   buffer_wait_num--;
   requestHandle (th_index, &node);
+
   Close (connfd);
   buffer_work_num--;
 }

@@ -137,12 +137,21 @@ void requestServeStatic(int th_index, node_t *node, char *filename, int filesize
 
   requestGetFiletype(filename, filetype);
 
+  struct timeval req_rd_before, req_rd_after;
+
+  gettimeofday (&req_rd_before, NULL);
+
   srcfd = Open(filename, O_RDONLY, 0);
 
   // Rather than call read() to read the file into memory, 
   // which would require that we allocate a buffer, we memory-map the file
   srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
   Close(srcfd);
+
+  gettimeofday (&req_rd_after, NULL);
+
+  //  Stat-req-read
+  node->stat_req_read = (int)((req_rd_after.tv_sec-req_rd_before.tv_sec)/1000 + (req_rd_after.tv_usec-req_rd_before.tv_usec)*1000);
 
   // The following code is only needed to help you time the "read" given 
   // that the file is memory-mapped.  
@@ -155,15 +164,24 @@ void requestServeStatic(int th_index, node_t *node, char *filename, int filesize
     tmp += *(srcp + i);
   }
 
+  //  Stat-req-complete
+  struct timeval complete_time;
+  gettimeofday (&complete_time, NULL);
+  int complete_time_ms = (int)(complete_time.tv_sec/1000 + complete_time.tv_usec*1000);
+  node->stat_req_complete = complete_time_ms - node->stat_req_arrival;
+
+  //  Stat-req-age
+  node->stat_req_age = node->stat_req_death - node->stat_req_birth;
 
   sprintf(buf, "HTTP/1.0 200 OK\r\n");
   sprintf(buf, "%s Server: CS537 Web Server\r\n", buf);
 
   // CS537: Your statistics go here -- fill in the 0's with something useful!
   sprintf(buf, "%s Stat-req-arrival: %d\r\n", buf, node->stat_req_arrival);
-  sprintf(buf, "%s Stat-req-dispatch: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-req-read: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-req-complete: %d\r\n", buf, 0);
+  sprintf(buf, "%s Stat-req-dispatch: %d\r\n", buf, node->stat_req_dispatch);
+  sprintf(buf, "%s Stat-req-read: %d\r\n", buf, node->stat_req_read);
+  sprintf(buf, "%s Stat-req-complete: %d\r\n", buf, node->stat_req_complete);
+  sprintf(buf, "%s Stat-req-age: %d\r\n", buf, node->stat_req_age);
   sprintf(buf, "%s Stat-thread-id: %u\r\n", buf, stat_thread_id[th_index]);
   sprintf(buf, "%s Stat-thread-count: %u\r\n", buf, stat_thread_count[th_index]);
   sprintf(buf, "%s Stat-thread-static: %u\r\n", buf, stat_thread_static[th_index]);
@@ -233,6 +251,10 @@ int requestSize (int fd)
   struct stat sbuf;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
   char filename[MAXLINE], cgiargs[MAXLINE];
+  rio_t rio;
+
+  Rio_readinitb(&rio, fd);
+  Rio_readlineb(&rio, buf, MAXLINE);
   sscanf(buf, "%s %s %s", method, uri, version);
 
   is_static = requestParseURI(uri, filename, cgiargs);
@@ -252,6 +274,10 @@ int isStaticRequest (int fd)
   int is_static;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
   char filename[MAXLINE], cgiargs[MAXLINE];
+  rio_t rio;
+
+  Rio_readinitb(&rio, fd);
+  Rio_readlineb(&rio, buf, MAXLINE);
   sscanf(buf, "%s %s %s", method, uri, version);
 
   is_static = requestParseURI(uri, filename, cgiargs);

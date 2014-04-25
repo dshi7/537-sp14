@@ -13,6 +13,8 @@ typedef struct _node_t {
   int stat_req_dispatch;
   int stat_req_read;
   int stat_req_complete;
+  int stat_req_birth;
+  int stat_req_death;
   int stat_req_age;
   struct _node_t *next;
 } node_t;
