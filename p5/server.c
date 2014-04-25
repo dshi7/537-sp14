@@ -21,12 +21,6 @@ int sched_alg_code;
 pthread_t *work_threads;
 int *work_threads_status; 
 
-//  usage statistics in part 3
-unsigned int *stat_thread_id;
-unsigned int *stat_thread_count;
-unsigned int *stat_thread_static;
-unsigned int *stat_thread_dynamic;
-
 void  status_info (int *work_threads_status, int max_threads) {
   int i;
   printf("status : ");
@@ -39,20 +33,16 @@ void  buffer_usage (void) {
   printf ("Buffer Usage : %d waiting and %d running\n", buffer_wait_num, buffer_work_num);
 }
 
-typedef struct _node_t {
-  int val;
-  int size;
-  struct _node_t *next;
-} node_t;
-
-typedef struct _queue {
+typedef struct _queue 
+{
   node_t *head;
   node_t *tail;
 } queue;
 
 queue buf_wait_queue;
 
-void  queue_info (queue *wait_queue) {
+void  queue_info (queue *wait_queue) 
+{
   node_t *tmp;
   printf("queue : ");
   for ( tmp=wait_queue->head; tmp->next != NULL; tmp = tmp->next )
@@ -60,7 +50,8 @@ void  queue_info (queue *wait_queue) {
   printf("\n");
 }
 
-void  queue_init (queue *wait_queue) {
+void  queue_init (queue *wait_queue) 
+{
   //  Create a sentinel
   node_t *new_node = malloc(sizeof(node_t));
   new_node->next = NULL;
@@ -70,12 +61,19 @@ void  queue_init (queue *wait_queue) {
   buffer_wait_num = 0;
 }
 
-void   queue_push (queue *wait_queue, int val) {
+void   queue_push (queue *wait_queue, int val) 
+{
+
+  struct timeval  arrival;
+
+  gettimeofday (&arrival, NULL);
+
   if ( sched_alg_code==0 ) {
     //  FIFO  or dynamic request
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
     new_node->size = 0;
+    new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
     new_node->next = NULL;
     wait_queue->tail->next = new_node;
     wait_queue->tail = wait_queue->tail->next;
@@ -84,6 +82,7 @@ void   queue_push (queue *wait_queue, int val) {
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
     new_node->size = requestSize (val);
+    new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
     //
     node_t *tmp = wait_queue->head;
     while ( tmp->next!=NULL && (tmp->next->size < new_node->size) )
@@ -98,6 +97,7 @@ void   queue_push (queue *wait_queue, int val) {
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
     new_node->size = requestSize (val);
+    new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
     //
     node_t *tmp = wait_queue->head;
     int  max_search = sff_bs_value - buffer_head_hist%sff_bs_value;
@@ -114,11 +114,10 @@ void   queue_push (queue *wait_queue, int val) {
   }
 }
 
-int queue_peek (queue *wait_queue) {
-  if ( wait_queue->head->next!=NULL )
-    return  wait_queue->head->next->val;
-  else
-    return -1;
+node_t queue_peek (queue *wait_queue) {
+  node_t  ret_node;
+  ret_node = *(wait_queue->head->next);
+  return ret_node;
 }
 
 void  queue_pop (queue *wait_queue) {
@@ -170,7 +169,6 @@ void getargs(int *port, int *threads, int *buffers, char *schedalg, int *sff_bs_
 //  Producer functions
 void  accept_request (int request_fd)
 {
-//  printf ("accept request : %d\n", request_fd);
   queue_push (&buf_wait_queue, request_fd);
   ++ buffer_wait_num;
 }
@@ -182,16 +180,17 @@ void  Master_thread_accept_request (int request_fd)
   while ( buffer_work_num+buffer_wait_num==max_buffers )
     pthread_cond_wait (&cond, &mutex);
   accept_request (request_fd);
-  pthread_cond_broadcast (&cond);
+  pthread_cond_signal (&cond);
   pthread_mutex_unlock (&mutex);
 }
 
 //  Consumer functions
-void  handle_request (void)
+void  handle_request (int th_index)
 {
 //  queue_info (&buf_wait_queue);
 
-  int connfd = queue_peek(&buf_wait_queue);
+  node_t node = queue_peek(&buf_wait_queue);
+  int connfd = node.val;
 
 //  printf ("handle request : %d\n", connfd);
 
@@ -201,11 +200,18 @@ void  handle_request (void)
   }
 
   queue_pop(&buf_wait_queue);
+
+  ++ stat_thread_count[th_index];
+  if ( isStaticRequest(connfd) )
+    ++ stat_thread_static[th_index];
+  else
+    ++ stat_thread_dynamic[th_index];
+
   buffer_head_hist++;
 
   buffer_work_num++;
   buffer_wait_num--;
-  requestHandle (connfd);
+  requestHandle (th_index, &node);
   Close (connfd);
   buffer_work_num--;
 }
@@ -218,8 +224,8 @@ void  *Worker_thread_handle_request (void *t)
     //  printf("thread %d lock\n", (int)t);
     while ( buffer_wait_num==0 )
       pthread_cond_wait (&cond, &mutex);
-    handle_request ();
-    pthread_cond_broadcast (&cond);
+    handle_request ( *(int*)t );
+    pthread_cond_signal (&cond);
     //  printf("thread %d unlock\n", (int)t);
     pthread_mutex_unlock (&mutex);
   }

@@ -97,7 +97,7 @@ void requestGetFiletype(char *filename, char *filetype)
     strcpy(filetype, "test/plain");
 }
 
-void requestServeDynamic(int fd, char *filename, char *cgiargs)
+void requestServeDynamic(int th_index, int fd, char *filename, char *cgiargs)
 {
   char buf[MAXLINE], *emptylist[] = {NULL};
 
@@ -109,10 +109,10 @@ void requestServeDynamic(int fd, char *filename, char *cgiargs)
   /* CS537: Your statistics go here -- fill in the 0's with something useful! */
   sprintf(buf, "%s Stat-req-arrival: %d\r\n", buf, 0);
   sprintf(buf, "%s Stat-req-dispatch: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-id: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-count: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-static: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-dynamic: %d\r\n", buf, 0);
+  sprintf(buf, "%s Stat-thread-id: %u\r\n", buf, stat_thread_id[th_index]);
+  sprintf(buf, "%s Stat-thread-count: %u\r\n", buf, stat_thread_count[th_index]);
+  sprintf(buf, "%s Stat-thread-static: %u\r\n", buf, stat_thread_static[th_index]);
+  sprintf(buf, "%s Stat-thread-dynamic: %u\r\n", buf, stat_thread_dynamic[th_index]);
 
   Rio_writen(fd, buf, strlen(buf));
 
@@ -127,8 +127,9 @@ void requestServeDynamic(int fd, char *filename, char *cgiargs)
 }
 
 
-void requestServeStatic(int fd, char *filename, int filesize) 
+void requestServeStatic(int th_index, node_t *node, char *filename, int filesize) 
 {
+  int fd = node->val;
   int srcfd;
   char *srcp, filetype[MAXLINE], buf[MAXBUF];
   char tmp = 0;
@@ -159,14 +160,14 @@ void requestServeStatic(int fd, char *filename, int filesize)
   sprintf(buf, "%s Server: CS537 Web Server\r\n", buf);
 
   // CS537: Your statistics go here -- fill in the 0's with something useful!
-  sprintf(buf, "%s Stat-req-arrival: %d\r\n", buf, 0);
+  sprintf(buf, "%s Stat-req-arrival: %d\r\n", buf, node->stat_req_arrival);
   sprintf(buf, "%s Stat-req-dispatch: %d\r\n", buf, 0);
   sprintf(buf, "%s Stat-req-read: %d\r\n", buf, 0);
   sprintf(buf, "%s Stat-req-complete: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-id: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-count: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-static: %d\r\n", buf, 0);
-  sprintf(buf, "%s Stat-thread-dynamic: %d\r\n", buf, 0);
+  sprintf(buf, "%s Stat-thread-id: %u\r\n", buf, stat_thread_id[th_index]);
+  sprintf(buf, "%s Stat-thread-count: %u\r\n", buf, stat_thread_count[th_index]);
+  sprintf(buf, "%s Stat-thread-static: %u\r\n", buf, stat_thread_static[th_index]);
+  sprintf(buf, "%s Stat-thread-dynamic: %u\r\n", buf, stat_thread_dynamic[th_index]);
 
   sprintf(buf, "%s Content-Length: %d\r\n", buf, filesize);
   sprintf(buf, "%s Content-Type: %s\r\n\r\n", buf, filetype);
@@ -180,9 +181,9 @@ void requestServeStatic(int fd, char *filename, int filesize)
 }
 
 // handle a request
-void requestHandle(int fd)
+void requestHandle(int th_index, node_t *node)
 {
-
+  int fd = node->val;
   int is_static;
   struct stat sbuf;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -214,13 +215,13 @@ void requestHandle(int fd)
       requestError(fd, filename, "403", "Forbidden", "CS537 Server could not read this file");
       return;
     }
-    requestServeStatic(fd, filename, sbuf.st_size);
+    requestServeStatic(th_index, node, filename, sbuf.st_size);
   } else {
     if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
       requestError(fd, filename, "403", "Forbidden", "CS537 Server could not run this CGI program");
       return;
     }
-    requestServeDynamic(fd, filename, cgiargs);
+    requestServeDynamic(th_index, fd, filename, cgiargs);
   }
 }
 
@@ -232,21 +233,7 @@ int requestSize (int fd)
   struct stat sbuf;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
   char filename[MAXLINE], cgiargs[MAXLINE];
-//  rio_t rio;
-
-//  Rio_readinitb(&rio, fd);
-//  Rio_readlineb(&rio, buf, MAXLINE);
   sscanf(buf, "%s %s %s", method, uri, version);
-
-//  printf("%s %s %s\n", method, uri, version);
-
-//  if (strcasecmp(method, "GET")) {
-//    requestError(fd, method, "501", "Not Implemented", 
-//        "CS537 Server does not implement this method");
-//    return -1;
-//  }
-
-//  requestReadhdrs(&rio);
 
   is_static = requestParseURI(uri, filename, cgiargs);
 
@@ -265,24 +252,10 @@ int isStaticRequest (int fd)
   int is_static;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
   char filename[MAXLINE], cgiargs[MAXLINE];
-  rio_t rio;
-
-  Rio_readinitb(&rio, fd);
-  Rio_readlineb(&rio, buf, MAXLINE);
   sscanf(buf, "%s %s %s", method, uri, version);
-
-//  printf("%s %s %s\n", method, uri, version);
-
-  if (strcasecmp(method, "GET")) {
-    requestError(fd, method, "501", "Not Implemented", 
-        "CS537 Server does not implement this method");
-    return -1;
-  }
-  requestReadhdrs(&rio);
 
   is_static = requestParseURI(uri, filename, cgiargs);
 
-//  Close(fd);
   return is_static;
 }
 
