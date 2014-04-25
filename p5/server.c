@@ -72,9 +72,11 @@ void   queue_push (queue *wait_queue, int val)
     //  FIFO  or dynamic request
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
-    new_node->size = 0;
+    new_node->st_size = 0;
     new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
     new_node->stat_req_birth = buffer_head_hist;
+    //  pre-process the request
+    requestPreProcess (new_node);
     new_node->next = NULL;
     wait_queue->tail->next = new_node;
     wait_queue->tail = wait_queue->tail->next;
@@ -82,12 +84,13 @@ void   queue_push (queue *wait_queue, int val)
   else if ( sched_alg_code==1  ) { //  SFF static request
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
-    new_node->size = requestSize (val);
     new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
     new_node->stat_req_birth = buffer_head_hist;
     //
     node_t *tmp = wait_queue->head;
-    while ( tmp->next!=NULL && (tmp->next->size < new_node->size) )
+    //  pre-process the request
+    requestPreProcess (new_node);
+    while ( tmp->next!=NULL && (tmp->next->st_size < new_node->st_size) )
       tmp = tmp->next;  //  tmp is not NULL
     // insert here and break
     new_node->next = tmp->next;
@@ -98,14 +101,15 @@ void   queue_push (queue *wait_queue, int val)
   else if ( sched_alg_code==2  ) { //  SFF-BS static request
     node_t *new_node = malloc(sizeof(node_t));
     new_node->val = val;
-    new_node->size = requestSize (val);
     new_node->stat_req_arrival = (int)(arrival.tv_sec/1000 + arrival.tv_usec*1000);
     new_node->stat_req_birth = buffer_head_hist;
     //
     node_t *tmp = wait_queue->head;
+    //  pre-process the request
+    requestPreProcess (new_node);
     int  max_search = sff_bs_value - buffer_head_hist%sff_bs_value;
     int  cnt_search = 1;
-    while ( cnt_search<max_search && tmp->next!=NULL && (tmp->next->size < new_node->size) ) {
+    while ( cnt_search<max_search && tmp->next!=NULL && (tmp->next->st_size < new_node->st_size) ) {
       tmp = tmp->next;  //  tmp is not NULL
       ++ cnt_search;
     }
@@ -190,7 +194,6 @@ void  Master_thread_accept_request (int request_fd)
 //  Consumer functions
 void  handle_request (int th_index)
 {
-//  queue_info (&buf_wait_queue);
 
   node_t node = queue_peek(&buf_wait_queue);
   int connfd = node.val;
@@ -211,7 +214,7 @@ void  handle_request (int th_index)
   node.stat_req_dispatch = pickup_time_ms - node.stat_req_arrival;
 
   ++ stat_thread_count[th_index];
-  if ( isStaticRequest(connfd) )
+  if ( node.is_static )
     ++ stat_thread_static[th_index];
   else
     ++ stat_thread_dynamic[th_index];
@@ -221,7 +224,12 @@ void  handle_request (int th_index)
 
   buffer_work_num++;
   buffer_wait_num--;
-  requestHandle (th_index, &node);
+//  requestHandle (th_index, &node);
+
+  if ( node.is_static )
+    requestServeStatic (th_index, &node, node.filename, node.st_size);
+  else
+    requestServeDynamic (th_index, node.val, node.filename, node.cgiargs);
 
   Close (connfd);
   buffer_work_num--;
