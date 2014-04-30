@@ -267,7 +267,7 @@ int main(int argc, char *argv[])
     stat_thread_dynamic[t] = 0;
       
     pthread_mutex_init (&work_locks[t], NULL);
-//    printf ("thread id = %d\n", t);
+
     //  SO TRICKY
     rc = pthread_create (&work_threads[t], NULL, &Worker_thread_handle_request, (void*)&stat_thread_id[t]);
 
