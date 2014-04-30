@@ -1,0 +1,7 @@
+ssh mumble-11.cs.wisc.edu
+cp -r ~cs537-3/public/p6 .
+cd p6
+make
+./server 10000&
+./client mumble-11.cs.wisc.edu 10000 20000
+pkill server
