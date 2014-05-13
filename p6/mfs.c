@@ -43,12 +43,12 @@ int MFS_Init (char *hostname, int port) {
   //  Write a message including the function and parameters
   char  message[MSG_SIZE];
   
-  printf ("CLIENT sends : init\n");
+//  printf ("CLIENT sends : init\n");
   sprintf (message, "init");
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
 
   rc = UDP_Read (sd, &addr2, message, MSG_SIZE);
-  printf("CLIENT:: read %d bytes (message: '%s')\n", rc, message);
+//  printf("CLIENT:: read %d bytes (message: '%s')\n", rc, message);
 
   return 0;
 
@@ -58,7 +58,7 @@ int MFS_Lookup(int pinum, char *name) {
 
   int rc;
 
-  printf ("LOOKUP %d %s\n", pinum, name, 0);
+//  printf ("LOOKUP %d %s\n", pinum, name, 0);
   char  message[MSG_SIZE];
   sprintf (message, "l %d %s%c", pinum, name, 0);
 
@@ -67,8 +67,6 @@ int MFS_Lookup(int pinum, char *name) {
   char  message2[MSG_SIZE];
 
   struct sockaddr_in addr2;
-
-  sleep (5);
 
   rc = UDP_Read (sd, &addr2, message2, MSG_SIZE);
 
@@ -82,5 +80,27 @@ int MFS_Lookup(int pinum, char *name) {
 int MFS_Stat(int inum, MFS_Stat_t *m);
 int MFS_Write(int inum, char *buffer, int block);
 int MFS_Read(int inum, char *buffer, int block);
-int MFS_Creat(int pinum, int type, char *name);
+
+int MFS_Creat(int pinum, int type, char *name) {
+
+  int rc;
+
+  char  message[MSG_SIZE];
+  sprintf (message, "c %d %d %s", pinum, type, name);
+
+  rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  char  message2[MSG_SIZE];
+
+  struct sockaddr_in addr2;
+
+  rc = UDP_Read (sd, &addr2, message2, MSG_SIZE);
+
+  int val = atoi(message2);
+
+  printf ("Returned value = %d\n", val);
+
+  return val;
+}
+
 int MFS_Unlink(int pinum, char *name);
