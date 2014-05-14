@@ -60,7 +60,7 @@ int MFS_Lookup(int pinum, char *name) {
 
 //  printf ("LOOKUP %d %s\n", pinum, name, 0);
   char  message[MSG_SIZE];
-  sprintf (message, "l %d %s%c", pinum, name, 0);
+  sprintf (message, "l;%d;%s", pinum, name);
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
 
@@ -72,7 +72,7 @@ int MFS_Lookup(int pinum, char *name) {
 
   int val = atoi(message2);
 
-  printf ("Returned value = %d\n", val);
+//  printf ("Returned value = %d\n", val);
 
   return val;
 }
@@ -86,7 +86,7 @@ int MFS_Creat(int pinum, int type, char *name) {
   int rc;
 
   char  message[MSG_SIZE];
-  sprintf (message, "c %d %d %s", pinum, type, name);
+  sprintf (message, "c;%d;%d;%s", pinum, type, name);
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
 

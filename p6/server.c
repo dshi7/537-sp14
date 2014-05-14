@@ -17,6 +17,31 @@ int BLOCK_BMAP_HEAD = 0;
 
 int fd;
 
+int mfs_argc;
+char *mfs_argv[512];
+char buffer[BUFFER_SIZE];
+
+//  Parse the buffer[BUFFER_SIZE] into mfs_argv[512]
+void  parseSocketMessage (char *buffer, char **mfs_argv, int *mfs_argc, int show_detail) {
+
+  char *token;
+  int i=0;
+
+  token = strtok (buffer, ";");
+
+  *mfs_argc = 0;
+  mfs_argv[*mfs_argc] = token;
+
+  while (token != NULL) {
+    token = strtok (NULL, ";");
+    mfs_argv[++ (*mfs_argc)] = token;
+  }
+
+  if (show_detail)
+    while (i < *mfs_argc)
+      puts (mfs_argv[i++]);
+}
+
 
 //  Initialize the file system in the server side
 //  Para :  image_name
@@ -344,8 +369,11 @@ int main(int argc, char *argv[])
 
   while (1) {
     struct sockaddr_in s;
-    char buffer[BUFFER_SIZE];
     int rc = UDP_Read(sd, &s, buffer, BUFFER_SIZE); //read message buffer from port sd
+//    printf ("SERVER RECEIVES : %s\n", buffer);
+
+    parseSocketMessage (buffer, mfs_argv, &mfs_argc, 0);
+
 
     if (rc > 0) {
 
@@ -366,28 +394,28 @@ int main(int argc, char *argv[])
       }
 
       if (buffer[0]=='l') {
-        char  pinum_str[20];
+        int pinum = atoi (mfs_argv[1]);
         char  name[512];
-        int   pinum;
-        int i=2;
-        while (buffer[i]!=' ') {
-          pinum_str[i-2] = buffer[i];
-          i++;
-        }
-        pinum = atoi(pinum_str);
-
-        i++;
-        int j=0;
-        while (buffer[i+j] != 0) {
-          name[j] = buffer[i+j];
-          j++;
-        }
-        name[j] = '\0';
+        strcpy (name, mfs_argv[2]);
 
         int val = SFS_Lookup (pinum, name);
         char reply[BUFFER_SIZE];
         sprintf(reply, "%d", val);
-        //        printf ("SERVER : send %d\n", val);
+//        printf ("SERVER : send %d\n", val);
+        rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
+      }
+
+      if (buffer[0]=='c') {
+
+        int pinum = atoi (mfs_argv[1]);
+        int type = atoi (mfs_argv[2]);
+        char  name[512];
+        strcpy (name, mfs_argv[3]);
+
+        int val = SFS_Create (pinum, type, name);
+        char reply[BUFFER_SIZE];
+        sprintf(reply, "%d", val);
+        printf ("SERVER : send %d\n", val);
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
       }
 
