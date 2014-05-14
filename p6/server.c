@@ -11,7 +11,6 @@
 #define INODE_SIZE  25
 
 #define DEBUG 1
-#undef  DEBUG
 
 int INODE_HEAD = 0;
 int BLOCK_HEAD = 0;
@@ -138,6 +137,7 @@ int SFS_Init (char *image_name)
     lseek (fd, INODE_HEAD, SEEK_SET);
     read (fd, (void*)inode, INODE_SIZE);
     inode[0] = 0; //  type
+    inode[2] = 4; //  bytes
     inode[4] = 1; //  block size : take at least 1 block
 
     lseek (fd, INODE_HEAD, SEEK_SET);
@@ -327,6 +327,10 @@ int SFS_Create (int pinum, int type, char *name)
     return -1;
   inode_bitmap[inode_id] = 1;
 
+  //  Update the inode bitmap
+  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+  write (fd, (void*)inode_bitmap, FS_SIZE);
+
   char inode_table_entry[STR_LENTH];  
   lseek (fd, inode_id *STR_LENTH, SEEK_SET);
   read (fd, (void*)inode_table_entry, STR_LENTH);
@@ -351,6 +355,7 @@ int SFS_Create (int pinum, int type, char *name)
   }
 
   //  Read the number of allocated data blocks.
+  int byte_num = (pinode[1]<<8) | pinode[2];
   int blk_num = (pinode[3]<<8) | pinode[4];
 #ifdef  DEBUG
   printf ("pinode[3]=%d\tpinode[4]=%d\tblk_num=%d\n", pinode[3], pinode[4], blk_num);
@@ -444,10 +449,13 @@ int SFS_Create (int pinum, int type, char *name)
 #ifdef  DEBUG
     printf ("Before : blk_num = %d\n", blk_num);
 #endif
+    byte_num = byte_num + 2;  //  one more integer (2 bytes) is added
     blk_num ++;
 #ifdef  DEBUG
     printf ("After : blk_num = %d\n", blk_num);
 #endif
+    pinode[1] = (byte_num>>8) & 255;
+    pinode[2] = byte_num & 255;
     pinode[3] = (blk_num>>8) & 255;
     pinode[4] = blk_num & 255;
     pinode[4+2*blk_num-1] = (pblock_id>>8) & 255;
@@ -473,6 +481,7 @@ int SFS_Create (int pinum, int type, char *name)
   inode[0] = type;
   //  Allocate the data block if type==MFS_DIRECTORY
   if (inode[0]==MFS_DIRECTORY) {
+    inode[2] = 4;
     inode[4] = 1;
     inode[5] = (block_id>>8) & 255;
     inode[6] = block_id & 255;
@@ -501,6 +510,32 @@ int SFS_Create (int pinum, int type, char *name)
 
   return 0;
 
+}
+
+void SFS_Stat (int inum, char *reply)
+{
+  char inode_bitmap[FS_SIZE];
+  char inode[INODE_SIZE];
+
+  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+  read (fd, (void*)inode_bitmap, FS_SIZE);
+  if (inum<0 || inum>=FS_SIZE || !inode_bitmap[inum]) {
+    sprintf (reply, "error");
+    return;
+  }
+
+  lseek (fd, INODE_HEAD + inum * INODE_SIZE, SEEK_SET);
+  read (fd, (void*)inode, INODE_SIZE);
+
+  int type = (int)inode[0];
+
+  int size = (inode[1]<<8) | inode[2];
+  int blk = (inode[3]<<8) | inode[4];
+  if (blk>1)
+    blk --;     //  . and .. should not take a separate data block
+
+  sprintf (reply, "%d %d %d", type, size, blk);
+  return;
 }
 
 int main(int argc, char *argv[])
@@ -570,9 +605,17 @@ int main(int argc, char *argv[])
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
       }
 
-      //      char reply[BUFFER_SIZE];
-      //      sprintf(reply, "reply");
-      //      rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
+      if (buffer[0]=='s') {
+
+        int inum = atoi (mfs_argv[1]);
+
+        char reply[BUFFER_SIZE];
+        
+        SFS_Stat (inum, reply);
+
+//        printf ("SERVER : send %d\n", val);
+        rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
+      }
     }
   }
 
