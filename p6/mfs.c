@@ -21,6 +21,7 @@
 
 
 #define DEBUG 1
+//#undef  DEBUG
 
 int sd = -1;
 struct sockaddr_in addr, addr2;
@@ -133,7 +134,36 @@ int MFS_Stat(int inum, MFS_Stat_t *m)
   return 0;
 }
 
-int MFS_Write(int inum, char *buffer, int block);
+int MFS_Write(int inum, char *buffer, int block)
+{
+
+  int rc ;
+
+#ifdef  DEBUG
+  printf ("WRITE %d %s %d\n", inum, buffer, block);
+  //  shit : hopefull ";" will not appear in buffer.
+#endif
+
+  char  message[MSG_SIZE];
+  sprintf (message, "w;%d;%d;%s", inum, block, buffer);
+
+  rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  char  message2[MSG_SIZE];
+
+  struct sockaddr_in addr2;
+
+  rc = UDP_Read (sd, &addr2, message2, MSG_SIZE);
+
+  int val = atoi(message2);
+
+#ifdef  DEBUG
+  printf ("Returned value = %d\n\n", val);
+#endif
+
+  return val;
+}
+
 int MFS_Read(int inum, char *buffer, int block);
 
 int MFS_Creat(int pinum, int type, char *name) 
