@@ -4,14 +4,14 @@
 #include "mfs.h"
 
 
-#define BUFFER_SIZE (4096)
+#define BUFFER_SIZE (8192)
 #define FS_SIZE 4096
 #define BLK_SIZE  4096 
-#define STR_LENTH 512
+#define STR_LENTH 8192
 #define INODE_SIZE  25
 
 #define DEBUG 1
-//#undef DEBUG
+#undef DEBUG
 
 int INODE_HEAD = 0;
 int BLOCK_HEAD = 0;
@@ -541,6 +541,10 @@ int SFS_Write (int inum, int blk_offset, char *buf)
   char inode_bitmap[FS_SIZE];
   char inode[INODE_SIZE];
 
+#ifdef  DEBUG
+  printf ("buf length=%d\n", strlen(buf));
+#endif
+
   lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
   read (fd, (void*)inode_bitmap, FS_SIZE);
   if (inum<0 || inum>=FS_SIZE || !inode_bitmap[inum]) {
@@ -563,7 +567,9 @@ int SFS_Write (int inum, int blk_offset, char *buf)
 
   char  blk_chunk[BLK_SIZE];
 
-  if (blk_offset < blk_num) {
+  if (blk_offset < 0)
+    return -1;
+  else if (blk_offset < blk_num) {
     //  write to the last data block
     blk_id = ( inode[5 + 2*(blk_num-1)] << 8 ) | inode[5 + 2*blk_num-1];
     lseek (fd, BLOCK_HEAD + blk_id * BLK_SIZE, SEEK_SET);
@@ -612,8 +618,12 @@ int SFS_Write (int inum, int blk_offset, char *buf)
     inode[5+2*blk_num-1] = blk_id & 255;
 
   }
-  else
+  else {
+#ifdef  DEBUG
+    printf ("blk_offset = %d\tblk_num = %d\n", blk_offset, blk_num);
+#endif
     return -1;
+  }
 
 //  printf ("strlen = %d\n", strlen(buf));
   byte_num = byte_num + strlen(buf);
@@ -711,7 +721,7 @@ int main(int argc, char *argv[])
 
         SFS_Stat (inum, reply);
 
-        printf ("SERVER : send %s\n", reply);
+//        printf ("SERVER : send %s\n", reply);
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
       }
 

@@ -15,13 +15,13 @@
  * =====================================================================================
  */
 
-#define MSG_SIZE  (4096)
+#define MSG_SIZE  (8192)
 #include "mfs.h"
 #include "udp.h"
 
 
 #define DEBUG 1
-//#undef  DEBUG
+#undef  DEBUG
 
 int sd = -1;
 struct sockaddr_in addr, addr2;
@@ -123,7 +123,8 @@ int MFS_Stat(int inum, MFS_Stat_t *m)
   m->type = atoi (token);
   
   token = strtok (NULL, " ");
-  m->size = atoi(token) /2 * sizeof(MFS_DirEnt_t);
+
+  m->size = (m->type==MFS_REGULAR_FILE) ? atoi(token) : atoi(token) /2 * sizeof(MFS_DirEnt_t);
 
   token = strtok (NULL, " ");
   m->blocks = atoi (token);
@@ -141,6 +142,7 @@ int MFS_Write(int inum, char *buffer, int block)
 
 #ifdef  DEBUG
   printf ("WRITE %d %s %d\n", inum, buffer, block);
+  printf ("strlen = %d\n", strlen(buffer));
   //  shit : hopefull ";" will not appear in buffer.
 #endif
 
