@@ -139,15 +139,22 @@ int MFS_Write(int inum, char *buffer, int block)
 {
 
   int rc ;
+  char  buf[MFS_BLOCK_SIZE+1];
+
+  int  i;
+  for (i=0; i<MFS_BLOCK_SIZE; i++)
+    buf[i] = buffer[i];
+
+  buf[MFS_BLOCK_SIZE] = '\0';
 
 #ifdef  DEBUG
-  printf ("WRITE %d %s %d\n", inum, buffer, block);
-  printf ("strlen = %d\n", strlen(buffer));
-  //  shit : hopefull ";" will not appear in buffer.
+  printf ("WRITE %d %s %d\n", inum, buf, block);
+
+  printf ("%d\n", strlen(buf));
 #endif
 
   char  message[MSG_SIZE];
-  sprintf (message, "w;%d;%d;%s", inum, block, buffer);
+  sprintf (message, "w;%d;%d;%s", inum, block, buf);
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
 
@@ -159,6 +166,8 @@ int MFS_Write(int inum, char *buffer, int block)
 
   int val = atoi(message2);
 
+  printf ("FIRST CHAR = %d\n", buffer[0]);
+
 #ifdef  DEBUG
   printf ("Returned value = %d\n\n", val);
 #endif
@@ -166,7 +175,37 @@ int MFS_Write(int inum, char *buffer, int block)
   return val;
 }
 
-int MFS_Read(int inum, char *buffer, int block);
+int MFS_Read(int inum, char *buffer, int block)
+{
+
+  int rc ;
+
+#ifdef  DEBUG
+  printf ("READ %d %d\n", inum, block);
+#endif
+
+  char  message[MSG_SIZE];
+  sprintf (message, "r;%d;%d", inum, block);
+
+  rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  char  message2[MSG_SIZE];
+
+  struct sockaddr_in addr2;
+
+  rc = UDP_Read (sd, &addr2, message2, MSG_SIZE);
+
+#ifdef  DEBUG
+  printf ("Returned message = %s\n\n", message2);
+#endif
+
+  if (strcmp (message2, "error")==0)
+    return -1;
+
+  memcpy (buffer, message2, MFS_BLOCK_SIZE);
+
+  return 0;
+}
 
 int MFS_Creat(int pinum, int type, char *name) 
 {
@@ -197,4 +236,9 @@ int MFS_Creat(int pinum, int type, char *name)
   return val;
 }
 
-int MFS_Unlink(int pinum, char *name);
+int MFS_Unlink(int pinum, char *name) 
+{
+  char  message[MSG_SIZE];
+
+  sprintf (message, "u;%d;%s", pinum, name);
+}

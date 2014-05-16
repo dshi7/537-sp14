@@ -6,7 +6,7 @@
 
 #define BUFFER_SIZE (8192)
 #define FS_SIZE 4096
-#define BLK_SIZE  4096 
+#define BLK_SIZE  4096
 #define STR_LENTH 8192
 #define INODE_SIZE  25
 
@@ -456,7 +456,7 @@ int SFS_Create (int pinum, int type, char *name)
 
 #ifdef  DEBUG
   printf ("UPDATED PARENT INODE : %d\n", pinum);
-  for (i=0; i<25; i++)
+  for (i=0; i<INODE_SIZE; i++)
     printf ("%d ", pinode[i]);
   printf ("\n");
 #endif
@@ -554,6 +554,13 @@ int SFS_Write (int inum, int blk_offset, char *buf)
   lseek (fd, INODE_HEAD + inum * INODE_SIZE, SEEK_SET);
   read (fd, (void*)inode, INODE_SIZE);
 
+#ifdef  DEBUG
+  printf ("inode = %d\n", inum);
+  for (i=0; i<INODE_SIZE; i++)
+    printf ("%d ", inode[i]);
+  printf ("\n");
+#endif
+
   int type = (int)inode[0];
 
   if (type==MFS_DIRECTORY)
@@ -646,6 +653,62 @@ int SFS_Write (int inum, int blk_offset, char *buf)
     
 }
 
+void  SFS_Read (int inum, int blk_offset, char *buf)
+{
+  int i;
+  if (inum<0 || inum>=FS_SIZE) {
+    strcpy (buf, "error");
+    return;
+  }
+
+  //  read the inode bitmap
+  char  inode_bitmap[FS_SIZE];
+  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+  read (fd, (void*)inode_bitmap, FS_SIZE);
+
+  if (!inode_bitmap[inum]) {
+    strcpy (buf, "error");
+    return;
+  }
+
+  //  read the inode
+  char  inode[INODE_SIZE];
+
+  lseek (fd, INODE_HEAD+inum*INODE_SIZE, SEEK_SET);
+  read (fd, (void*)inode, INODE_SIZE);
+
+#ifdef  DEBUG
+  printf ("inode = %d\n", inum);
+  for (i=0; i<INODE_SIZE; i++)
+    printf ("%d ", inode[i]);
+  printf ("\n");
+#endif
+
+  if (inode[0]==MFS_REGULAR_FILE) {
+    //  read the specified data block
+    printf ("this is a regular file\n");
+    int blk_num = (inode[3]<<8) | inode[4];
+    if (blk_offset<0 || blk_offset>=blk_num) {
+      strcpy (buf, "error");
+      return;
+    }
+    int blk_id = (inode[5+2*blk_offset]<<8) | inode[5+2*blk_offset+1];
+
+    lseek (fd, BLOCK_HEAD + blk_id * BLK_SIZE, SEEK_SET);
+    read (fd, (void*)buf, BLK_SIZE);
+
+    return;
+  }
+  else {
+    //  read the specified directory
+    lseek (fd, inum * STR_LENTH, SEEK_SET);
+    read (fd, (void*)buf, STR_LENTH);
+    buf[strlen(buf)-1] = '\0';
+
+    return;
+  }
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -664,7 +727,7 @@ int main(int argc, char *argv[])
   while (1) {
     struct sockaddr_in s;
     int rc = UDP_Read(sd, &s, buffer, BUFFER_SIZE); //read message buffer from port sd
-    //    printf ("SERVER RECEIVES : %s\n", buffer);
+    printf ("SERVER RECEIVES : %s\n", buffer);
 
     parseSocketMessage (buffer, mfs_argv, &mfs_argc, 0);
 
@@ -737,6 +800,20 @@ int main(int argc, char *argv[])
         sprintf(reply, "%d", val);
         //        printf ("SERVER : send %d\n", val);
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
+      }
+
+      if (buffer[0]=='r') {
+
+        int inum = atoi (mfs_argv[1]);
+        int blk_offset = atoi (mfs_argv[2]);
+        
+        //  in MFS_Read the size of read data is fixed as BLK_SIZE
+        char  reply[BLK_SIZE+1];
+
+        reply[BLK_SIZE] = '\0';
+        SFS_Read (inum, blk_offset, reply);
+
+        rc = UDP_Write(sd, &s, reply, BLK_SIZE+1); //write message buffer to port sd
       }
     }
   }
