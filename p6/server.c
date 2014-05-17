@@ -6,12 +6,14 @@
 
 #define BUFFER_SIZE (8192)
 #define FS_SIZE 4096
-#define BLK_SIZE  4096
+#define BLK_SIZE  128
 #define STR_LENTH 8192
 #define INODE_SIZE  25
 
 #define DEBUG 1
 #undef DEBUG
+
+//  default timeout
 
 int INODE_HEAD = 0;
 int BLOCK_HEAD = 0;
@@ -709,6 +711,95 @@ void  SFS_Read (int inum, int blk_offset, char *buf)
   }
 }
 
+int SFS_Unlink (int pinum, char *name)
+{
+  if (pinum<0 || pinum>=FS_SIZE)
+    return -1;
+
+  int   inode_id = SFS_Lookup (pinum, name);
+  char  inode_bitmap[FS_SIZE];
+  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+  read (fd, (void*)inode_bitmap, FS_SIZE);
+
+  if (inode_bitmap[pinum]==0)
+    return -1;
+  char  block_bitmap[FS_SIZE];
+
+  //  Return zero if the name is not existing.
+  if (inode_id == -1)
+    return 0;
+
+  char  inode[INODE_SIZE];
+  lseek (fd, INODE_HEAD + inode_id * INODE_SIZE, SEEK_SET);
+  read (fd, (void*)inode, INODE_SIZE);
+  
+  int type = inode[0];
+  int size = (inode[1]<<8) | inode[2];
+  int block_num = (inode[3]<<8) | inode[4];
+
+  if (type==MFS_DIRECTORY) {
+
+    //  Return failure if the directory is not empty.
+    if (size>4)
+      return -1;
+
+    //  Only one data block
+    assert (block_num==1);
+    int block_id = (inode[5]<<8) | inode[6];
+
+    //  Free the inode bitmap.
+    lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+    read (fd, (void*)inode_bitmap, FS_SIZE);
+    inode_bitmap[inode_id] = 0;
+    lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+    write (fd, (void*)inode_bitmap, FS_SIZE);
+
+    //  Free the block bitmap.
+    lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
+    read (fd, (void*)block_bitmap, FS_SIZE);
+    block_bitmap[block_id] = 0;
+    lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
+    write (fd, (void*)block_bitmap, FS_SIZE);
+
+  }
+  else {
+
+    //  Free the inode bitmap.
+    lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+    read (fd, (void*)inode_bitmap, FS_SIZE);
+    inode_bitmap[inode_id] = 0;
+    lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+    write (fd, (void*)inode_bitmap, FS_SIZE);
+
+    //  Free the block bitmap.
+    lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
+    read (fd, (void*)block_bitmap, FS_SIZE);
+    int i, block_id;
+
+    for (i=0; i<block_num; i++) {
+      block_id = (inode[5+2*i]<<8) | inode[6+2*i];
+      block_bitmap[block_id] = 0;
+    }
+    lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
+    write (fd, (void*)block_bitmap, FS_SIZE);
+    
+  }
+
+  lseek (fd, INODE_HEAD + pinum * INODE_SIZE, SEEK_SET);
+  read (fd, (void*)inode, INODE_SIZE);
+
+  //  Update the size in parent directory
+  size = (inode[1]<<8) | inode[2];
+  size = size-1;
+  inode[1] = (size >> 8) & 255;
+  inode[2] = size & 255;
+
+  lseek (fd, INODE_HEAD + pinum * INODE_SIZE, SEEK_SET);
+  write (fd, (void*)inode, INODE_SIZE);
+
+  return 0;
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -743,8 +834,7 @@ int main(int argc, char *argv[])
         char  reply[BUFFER_SIZE];
         sprintf (reply, "%d", val);
 
-        //        printf ("SERVER : val = %d\n", val);
-        //        printf ("SERVER : send %d\n", val);
+        fsync (fd);
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
         continue;
 
@@ -773,6 +863,7 @@ int main(int argc, char *argv[])
         char reply[BUFFER_SIZE];
         sprintf(reply, "%d", val);
         //        printf ("SERVER : send %d\n", val);
+        fsync (fd);
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
       }
 
@@ -799,6 +890,7 @@ int main(int argc, char *argv[])
         char reply[BUFFER_SIZE];
         sprintf(reply, "%d", val);
         //        printf ("SERVER : send %d\n", val);
+        fsync (fd);
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
       }
 
@@ -814,6 +906,19 @@ int main(int argc, char *argv[])
         SFS_Read (inum, blk_offset, reply);
 
         rc = UDP_Write(sd, &s, reply, BLK_SIZE+1); //write message buffer to port sd
+      }
+
+      if (buffer[0]=='u') {
+        int pinum = atoi (mfs_argv[1]);
+        char  name[512];
+        strcpy (name, mfs_argv[2]);
+        
+        int val = SFS_Unlink (pinum, name);
+        char reply[512];
+        sprintf (reply, "%d", val);
+
+        fsync (fd);
+        rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
       }
     }
   }

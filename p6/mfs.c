@@ -241,4 +241,20 @@ int MFS_Unlink(int pinum, char *name)
   char  message[MSG_SIZE];
 
   sprintf (message, "u;%d;%s", pinum, name);
+
+  int rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  char  message2[MSG_SIZE];
+
+  struct sockaddr_in addr2;
+
+  rc = UDP_Read (sd, &addr2, message2, MSG_SIZE);
+
+  int val = atoi(message2);
+
+#ifdef  DEBUG
+  printf ("Returned value = %d\n\n", val);
+#endif
+
+  return val;
 }
