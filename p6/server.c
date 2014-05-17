@@ -6,7 +6,7 @@
 
 #define BUFFER_SIZE (8192)
 #define FS_SIZE 4096
-#define BLK_SIZE  64
+#define BLK_SIZE  256
 #define STR_LENTH 8192
 #define INODE_SIZE  25
 
@@ -66,99 +66,103 @@ int getFreeDataBlock (void)
 int SFS_Init (char *image_name) 
 {
 
-  fd = open (image_name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); 
-  //  printf ("fd = %d\n", fd);
-  if (fd==-1) {
-    //    printf ("ERROR : %s\n", strerror(errno));
-    return -1;
+  fd = open (image_name, O_RDONLY, S_IRUSR | S_IWUSR);
+
+  if (fd!=-1) {
+    fd = open (image_name, O_RDWR, S_IRUSR | S_IWUSR);
+    INODE_HEAD = FS_SIZE * STR_LENTH;
+    BLOCK_HEAD = INODE_HEAD + FS_SIZE * INODE_SIZE;
+    INODE_BMAP_HEAD = BLOCK_HEAD + FS_SIZE * BLK_SIZE;
+    BLOCK_BMAP_HEAD = INODE_BMAP_HEAD + FS_SIZE;
+    return fd;
   }
-  else {
+  else
+    fd = open (image_name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
-    int i, j;
+  int i, j;
 
-    //  Write inode table in the file
-    char line[STR_LENTH] = "\n";
-    char  zero[2];  
-    zero[0] = 0; zero[1] = 0;
+  //  Write inode table in the file
+  char line[STR_LENTH] = "\n";
+  char  zero[2];  
+  zero[0] = 0; zero[1] = 0;
 
-    for (i=0; i<FS_SIZE; i++) 
-      write (fd, line, STR_LENTH);
+  for (i=0; i<FS_SIZE; i++) 
+    write (fd, line, STR_LENTH);
 
-    INODE_HEAD = (int)lseek (fd, 0, SEEK_END);
-    //  Write FS_SIZE inodes in the file
-    for (i=0; i<FS_SIZE; i++) {
-      //  inode type field
-      write (fd, (void*)zero, 1);  
-      //  inode size field
+  INODE_HEAD = (int)lseek (fd, 0, SEEK_END);
+  //  Write FS_SIZE inodes in the file
+  for (i=0; i<FS_SIZE; i++) {
+    //  inode type field
+    write (fd, (void*)zero, 1);  
+    //  inode size field
+    write (fd, (void*)zero, 2);  
+    //  inode block field
+    write (fd, (void*)zero, 2);  
+    for (j=0; j<10; j++) {
+      //  inode data block ptr
       write (fd, (void*)zero, 2);  
-      //  inode block field
-      write (fd, (void*)zero, 2);  
-      for (j=0; j<10; j++) {
-        //  inode data block ptr
-        write (fd, (void*)zero, 2);  
-      }
     }
+  }
 
-    BLOCK_HEAD = (int)lseek (fd, 0, SEEK_END);
-    //  Write FS_SIZE data blocks in the file
-    for (i=0; i<FS_SIZE; i++) {
-      //  Write a single data block
-      for (j=0; j<BLK_SIZE; j++)
-        //  Each data block is 4096 bytes
-        write (fd, (void*)zero, 1);
-    }
-
-    INODE_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
-    //  Write FS_SIZE inode bitmap in the file
-    for (i=0; i<FS_SIZE; i++) {
+  BLOCK_HEAD = (int)lseek (fd, 0, SEEK_END);
+  //  Write FS_SIZE data blocks in the file
+  for (i=0; i<FS_SIZE; i++) {
+    //  Write a single data block
+    for (j=0; j<BLK_SIZE; j++)
+      //  Each data block is 4096 bytes
       write (fd, (void*)zero, 1);
-    }
+  }
 
-    BLOCK_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
-    //  Write FS_SIZE block bitmap in the file
-    for (i=0; i<FS_SIZE; i++) {
-      write (fd, (void*)zero, 1);
-    }
+  INODE_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
+  //  Write FS_SIZE inode bitmap in the file
+  for (i=0; i<FS_SIZE; i++) {
+    write (fd, (void*)zero, 1);
+  }
+
+  BLOCK_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
+  //  Write FS_SIZE block bitmap in the file
+  for (i=0; i<FS_SIZE; i++) {
+    write (fd, (void*)zero, 1);
+  }
 
 #ifdef  DEBUG
-    printf ("SEEK %d\n", INODE_HEAD);
-    printf ("SEEK %d\n", BLOCK_HEAD-INODE_HEAD);
-    printf ("SEEK %d\n", INODE_BMAP_HEAD-BLOCK_HEAD);
-    printf ("SEEK %d\n", BLOCK_BMAP_HEAD-INODE_BMAP_HEAD);
+  printf ("SEEK %d\n", INODE_HEAD);
+  printf ("SEEK %d\n", BLOCK_HEAD-INODE_HEAD);
+  printf ("SEEK %d\n", INODE_BMAP_HEAD-BLOCK_HEAD);
+  printf ("SEEK %d\n", BLOCK_BMAP_HEAD-INODE_BMAP_HEAD);
 #endif  
 
-    //  Initialize the root directory
+  //  Initialize the root directory
 
-    //  Update the inode bitmap
-    char  inode_bitmap[FS_SIZE];    //  Inode bitmap
-    lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
-    read (fd, (void*)inode_bitmap, FS_SIZE);
-    inode_bitmap[0] = 1;
+  //  Update the inode bitmap
+  char  inode_bitmap[FS_SIZE];    //  Inode bitmap
+  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+  read (fd, (void*)inode_bitmap, FS_SIZE);
+  inode_bitmap[0] = 1;
 
-    lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
-    write (fd, (void*)inode_bitmap, FS_SIZE);
+  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+  write (fd, (void*)inode_bitmap, FS_SIZE);
 
-    //  Update the block bitmap
-    char  block_bitmap[FS_SIZE];    //  Block bitmap
-    lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
-    read (fd, (void*)block_bitmap, FS_SIZE);
-    block_bitmap[0] = 1;
+  //  Update the block bitmap
+  char  block_bitmap[FS_SIZE];    //  Block bitmap
+  lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
+  read (fd, (void*)block_bitmap, FS_SIZE);
+  block_bitmap[0] = 1;
 
-    lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
-    write (fd, (void*)block_bitmap, FS_SIZE);
+  lseek (fd, BLOCK_BMAP_HEAD, SEEK_SET);
+  write (fd, (void*)block_bitmap, FS_SIZE);
 
-    //  Update the inode
-    char  inode[INODE_SIZE];
-    lseek (fd, INODE_HEAD, SEEK_SET);
-    read (fd, (void*)inode, INODE_SIZE);
-    inode[0] = 0; //  type
-    inode[2] = 4; //  bytes
-    inode[4] = 1; //  block size : take at least 1 block
+  //  Update the inode
+  char  inode[INODE_SIZE];
+  lseek (fd, INODE_HEAD, SEEK_SET);
+  read (fd, (void*)inode, INODE_SIZE);
+  inode[0] = 0; //  type
+  inode[2] = 4; //  bytes
+  inode[4] = 1; //  block size : take at least 1 block
 
-    lseek (fd, INODE_HEAD, SEEK_SET);
-    write (fd, (void*)inode, INODE_SIZE);
+  lseek (fd, INODE_HEAD, SEEK_SET);
+  write (fd, (void*)inode, INODE_SIZE);
 
-  }
   return  fd;
 }
 
@@ -771,20 +775,50 @@ void  SFS_Read (int inum, int blk_offset, char *buf)
 
 int SFS_Unlink (int pinum, char *name)
 {
-  int i, j, blk_id;
+  int i, j, blk_id, blk_num, byte_num;
   char  blk_chunk[BLK_SIZE];
+  char  buf[2];
   char  inode[INODE_SIZE];
   if (pinum<0 || pinum>=FS_SIZE)
     return -1;
 
-  //  all the contaned inodes starts from the second block
-  char  blk_chunk[BLK_SIZE];
-
   int blk_cnt = 0;
   int byte_cnt = 0;
-  int blk_id;
   int data;
   int inode_id = -1;
+
+#ifdef  DEBUG
+  printf ("retval from SFS_Lookup : inode_id = %d\n",  inode_id);
+#endif
+  char  inode_bitmap[FS_SIZE];
+  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
+  read (fd, (void*)inode_bitmap, FS_SIZE);
+
+  //  Return failure if the pinum doesn't exist.
+  if (inode_bitmap[pinum]==0)
+    return -1;
+
+  lseek (fd, INODE_HEAD + pinum * INODE_SIZE, SEEK_SET);
+  read (fd, (void*)inode, INODE_SIZE);
+#ifdef  DEBUG
+  printf ("inode = %d\n", pinum);
+  for (i=0; i<INODE_SIZE; i++)
+    printf ("%d ", inode[i]);
+  printf ("\n");
+
+  byte_num = (inode[1]<<8) | inode[2];
+  blk_num = (inode[3]<<8) | inode[4];
+  blk_id = (inode[5]<<8) | inode[6];
+
+  //  jump to the data block
+  lseek (fd, BLOCK_HEAD + blk_id * BLK_SIZE, SEEK_SET);
+  read (fd, (void*)blk_chunk, BLK_SIZE);
+
+  printf ("Block id = %d\n", blk_id);
+  for (j=0; j< BLK_SIZE; j++)
+    printf ("%d ", blk_chunk[j]);
+  printf ("\n");
+#endif
 
   while (blk_cnt < blk_num) {
     buf[0] = inode[5+2*blk_cnt];
@@ -828,6 +862,12 @@ int SFS_Unlink (int pinum, char *name)
         printf ("FOUND !!! inode [%d] : %s\n", data, file_name);
 #endif
         inode_id = data;
+        
+        //  zero those byte
+        blk_chunk[j] = 0;
+        blk_chunk[j+1] = 0;
+        lseek (fd, BLOCK_HEAD + blk_id * BLK_SIZE, SEEK_SET);
+        write (fd, (void*)blk_chunk, BLK_SIZE);
         break;
       }
     }
@@ -836,41 +876,14 @@ int SFS_Unlink (int pinum, char *name)
     blk_cnt ++;
   }
 
-#ifdef  DEBUG
-  printf ("retval from SFS_Lookup : inode_id = %d\n",  inode_id);
-#endif
-  char  inode_bitmap[FS_SIZE];
-  lseek (fd, INODE_BMAP_HEAD, SEEK_SET);
-  read (fd, (void*)inode_bitmap, FS_SIZE);
-
-  //  Return failure if the pinum doesn't exist.
-  if (inode_bitmap[pinum]==0)
-    return -1;
-
-  lseek (fd, INODE_HEAD + pinum * INODE_SIZE, SEEK_SET);
-  read (fd, (void*)inode, INODE_SIZE);
-#ifdef  DEBUG
-  printf ("inode = %d\n", pinum);
-  for (i=0; i<INODE_SIZE; i++)
-    printf ("%d ", inode[i]);
-  printf ("\n");
-
-  blk_id = (inode[5]<<8) | inode[6];
-
-  //  jump to the data block
-  lseek (fd, BLOCK_HEAD + blk_id * BLK_SIZE, SEEK_SET);
-  read (fd, (void*)blk_chunk, BLK_SIZE);
-
-  printf ("Block id = %d\n", blk_id);
-  for (j=0; j< BLK_SIZE; j++)
-    printf ("%d ", blk_chunk[j]);
-  printf ("\n");
-#endif
   int type = inode[0];
 
   //  Return failure if the pinum is a regular file.
   if (type == MFS_REGULAR_FILE)
     return -1;
+
+  if (inode_id==-1)
+    return 0;
 
   char  block_bitmap[FS_SIZE];
 
@@ -953,7 +966,7 @@ int SFS_Unlink (int pinum, char *name)
 
   //  Update the size in parent directory
   size = (inode[1]<<8) | inode[2];
-  size = size-1;
+  size = size-2;
   inode[1] = (size >> 8) & 255;
   inode[2] = size & 255;
 
