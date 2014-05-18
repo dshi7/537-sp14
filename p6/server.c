@@ -91,41 +91,6 @@ int SFS_Init (char *image_name)
 
   int file_length = FS_SIZE * (STR_LENTH + INODE_HEAD + BLK_SIZE + 1 + 1);
   ftruncate (fd, file_length);
-//  INODE_HEAD = (int)lseek (fd, 0, SEEK_END);
-  //  Write FS_SIZE inodes in the file
-//  for (i=0; i<FS_SIZE; i++) {
-//    //  inode type field
-//    write (fd, (void*)zero, 1);  
-//    //  inode size field
-//    write (fd, (void*)zero, 2);  
-//    //  inode block field
-//    write (fd, (void*)zero, 2);  
-//    for (j=0; j<10; j++) {
-//      //  inode data block ptr
-//      write (fd, (void*)zero, 2);  
-//    }
-//  }
-
-//  BLOCK_HEAD = (int)lseek (fd, 0, SEEK_END);
-  //  Write FS_SIZE data blocks in the file
-//  for (i=0; i<FS_SIZE; i++) {
-//    //  Write a single data block
-//    for (j=0; j<BLK_SIZE; j++)
-//      //  Each data block is 4096 bytes
-//      write (fd, (void*)zero, 1);
-//  }
-
-//  INODE_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
-  //  Write FS_SIZE inode bitmap in the file
-  for (i=0; i<FS_SIZE; i++) {
-    write (fd, (void*)zero, 1);
-  }
-
-//  BLOCK_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
-  //  Write FS_SIZE block bitmap in the file
-//  for (i=0; i<FS_SIZE; i++) {
-//    write (fd, (void*)zero, 1);
-//  }
 
 #ifdef  DEBUG
   printf ("SEEK %d\n", INODE_HEAD);

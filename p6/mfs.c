@@ -26,6 +26,20 @@
 int sd = -1;
 struct sockaddr_in addr, addr2;
 
+int set_timeout (int sd, unsigned int seconds)
+{
+  fd_set set;
+  struct timeval timeout;
+
+  FD_ZERO (&set);
+  FD_SET (sd, &set);
+
+  timeout.tv_sec = seconds;
+  timeout.tv_usec = 0;
+
+  return  select (FD_SETSIZE, &set, NULL, NULL, &timeout);
+}
+
 //  Each of the following functions implements :
 //    Send message to server
 //    Read the returned value from server
@@ -36,14 +50,20 @@ int MFS_Init (char *hostname, int port)
 
   //  Initialize a specific port for client
   //    ** Not used further
+
+  int retval = -1;
+  int rc = -1;
+
+  //  Create an empty file whose file descriptor is used for signalling.
+  //
+
   sd = UDP_Open(port+2014); 
-  assert(sd > -1);
 
   //  Initialize a socket address to contact server at specified port
   //    Using : hostname and port
-  int rc = UDP_FillSockAddr (&addr, hostname, port); 
-  assert (rc == 0);
+  rc = UDP_FillSockAddr (&addr, hostname, port); 
 
+  printf ("rc = %d\n", rc);
   //  Write a message including the function and parameters
   char  message[MSG_SIZE];
   
@@ -51,7 +71,13 @@ int MFS_Init (char *hostname, int port)
   sprintf (message, "init");
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
 
+  //  timeout retry
+  while (set_timeout (sd, 5)==0) {
+    rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+  }
+
   rc = UDP_Read (sd, &addr2, message, MSG_SIZE);
+
 //  printf("CLIENT:: read %d bytes (message: '%s')\n", rc, message);
 
   return 0;
@@ -71,6 +97,11 @@ int MFS_Lookup(int pinum, char *name)
   sprintf (message, "l;%d;%s", pinum, name);
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  //  timeout retry
+  while (set_timeout (sd, 5)==0) {
+    rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+  }
 
   char  message2[MSG_SIZE];
 
@@ -100,6 +131,11 @@ int MFS_Stat(int inum, MFS_Stat_t *m)
   sprintf (message, "s;%d", inum);
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  //  timeout retry
+  while (set_timeout (sd, 5)==0) {
+    rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+  }
 
   char  message2[MSG_SIZE];
 
@@ -158,6 +194,11 @@ int MFS_Write(int inum, char *buffer, int block)
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
 
+  //  timeout retry
+  while (set_timeout (sd, 5)==0) {
+    rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+  }
+
   char  message2[MSG_SIZE];
 
   struct sockaddr_in addr2;
@@ -188,6 +229,11 @@ int MFS_Read(int inum, char *buffer, int block)
   sprintf (message, "r;%d;%d", inum, block);
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  //  timeout retry
+  while (set_timeout (sd, 5)==0) {
+    rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+  }
 
   char  message2[MSG_SIZE];
 
@@ -221,6 +267,11 @@ int MFS_Creat(int pinum, int type, char *name)
 
   rc = UDP_Write (sd, &addr, message, MSG_SIZE);
 
+  //  timeout retry
+  while (set_timeout (sd, 5)==0) {
+    rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+  }
+
   char  message2[MSG_SIZE];
 
   struct sockaddr_in addr2;
@@ -243,6 +294,11 @@ int MFS_Unlink(int pinum, char *name)
   sprintf (message, "u;%d;%s", pinum, name);
 
   int rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+
+  //  timeout retry
+  while (set_timeout (sd, 5)==0) {
+    rc = UDP_Write (sd, &addr, message, MSG_SIZE);
+  }
 
   char  message2[MSG_SIZE];
 
