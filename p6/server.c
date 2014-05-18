@@ -718,16 +718,21 @@ void  SFS_Read (int inum, int blk_offset, char *buf)
     printf ("%d ", inode[i]);
   printf ("\n");
 #endif
+  int byte_num = (inode[1]<<8) | inode[2];
+  int blk_num = (inode[3]<<8) | inode[4];
+  int byte_cnt = 0;
+  int blk_cnt = 0;
+  int blk_id;
+  char  blk_chunk[BLK_SIZE];
 
   if (inode[0]==MFS_REGULAR_FILE) {
     //  read the specified data block
     printf ("this is a regular file\n");
-    int blk_num = (inode[3]<<8) | inode[4];
     if (blk_offset<0 || blk_offset>=blk_num) {
       strcpy (buf, "error");
       return;
     }
-    int blk_id = (inode[5+2*blk_offset]<<8) | inode[5+2*blk_offset+1];
+    blk_id = (inode[5+2*blk_offset]<<8) | inode[5+2*blk_offset+1];
 
     lseek (fd, BLOCK_HEAD + blk_id * BLK_SIZE, SEEK_SET);
     read (fd, (void*)buf, BLK_SIZE);
@@ -736,9 +741,59 @@ void  SFS_Read (int inum, int blk_offset, char *buf)
   }
   else {
     //  read the specified directory
-    lseek (fd, inum * STR_LENTH, SEEK_SET);
-    read (fd, (void*)buf, STR_LENTH);
-    buf[strlen(buf)-1] = '\0';
+    printf ("this is a directory\n");
+
+    while (blk_cnt < blk_num) {
+
+      blk_id = (inode[5 + 2*blk_cnt] << 8) | inode[6 + 2*blk_cnt];
+
+      //  jump to the data block
+      lseek (fd, BLOCK_HEAD + blk_id * BLK_SIZE, SEEK_SET);
+      read (fd, (void*)blk_chunk, BLK_SIZE);
+
+#ifdef  DEBUG
+      printf ("Block id = %d\n", blk_id);
+      int j;
+      for (j=0; j< BLK_SIZE; j++)
+        printf ("%d ", blk_chunk[j]);
+      printf ("\n");
+#endif
+
+      for ( j = 0; (j < BLK_SIZE) && (byte_cnt<byte_num); j=j+2 ) {
+
+        int data = (blk_chunk[j]<<8) | blk_chunk[j+1];
+        char  content[252];
+        if (blk_cnt==0 && j==0)
+          sprintf (content, ".");
+        else if (blk_cnt==0 && j==2)
+          sprintf (content, "..");
+        else {
+          if (data==0)
+            continue;
+          lseek (fd, data * STR_LENTH, SEEK_SET);
+          read (fd, (void*)content, 252);
+          content[strlen(content)-1] = 0;
+        }
+        char  tmp[2];
+        
+        buf[byte_cnt * sizeof(MFS_DirEnt_t)] = blk_chunk[j+1];
+        buf[byte_cnt * sizeof(MFS_DirEnt_t)+1] = blk_chunk[j];
+        buf[byte_cnt * sizeof(MFS_DirEnt_t)+2] = 0;
+        buf[byte_cnt * sizeof(MFS_DirEnt_t)+3] = 0;
+
+        int k;
+        for (k=0; k<252; k++)
+          buf[byte_cnt * sizeof(MFS_DirEnt_t)+4+k] = content[k];
+
+        byte_cnt ++;
+      }
+
+
+      //  append to the buf
+      if (byte_cnt==byte_num)
+        break;
+      blk_cnt ++;
+    }
 
     return;
   }
