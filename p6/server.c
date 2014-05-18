@@ -6,7 +6,7 @@
 
 #define BUFFER_SIZE (8192)
 #define FS_SIZE 4096
-#define BLK_SIZE  256
+#define BLK_SIZE  4096 
 #define STR_LENTH 8192
 #define INODE_SIZE  25
 
@@ -68,12 +68,12 @@ int SFS_Init (char *image_name)
 
   fd = open (image_name, O_RDONLY, S_IRUSR | S_IWUSR);
 
+  INODE_HEAD = FS_SIZE * STR_LENTH;
+  BLOCK_HEAD = INODE_HEAD + FS_SIZE * INODE_SIZE;
+  INODE_BMAP_HEAD = BLOCK_HEAD + FS_SIZE * BLK_SIZE;
+  BLOCK_BMAP_HEAD = INODE_BMAP_HEAD + FS_SIZE;
   if (fd!=-1) {
     fd = open (image_name, O_RDWR, S_IRUSR | S_IWUSR);
-    INODE_HEAD = FS_SIZE * STR_LENTH;
-    BLOCK_HEAD = INODE_HEAD + FS_SIZE * INODE_SIZE;
-    INODE_BMAP_HEAD = BLOCK_HEAD + FS_SIZE * BLK_SIZE;
-    BLOCK_BMAP_HEAD = INODE_BMAP_HEAD + FS_SIZE;
     return fd;
   }
   else
@@ -89,41 +89,43 @@ int SFS_Init (char *image_name)
   for (i=0; i<FS_SIZE; i++) 
     write (fd, line, STR_LENTH);
 
-  INODE_HEAD = (int)lseek (fd, 0, SEEK_END);
+  int file_length = FS_SIZE * (STR_LENTH + INODE_HEAD + BLK_SIZE + 1 + 1);
+  ftruncate (fd, file_length);
+//  INODE_HEAD = (int)lseek (fd, 0, SEEK_END);
   //  Write FS_SIZE inodes in the file
-  for (i=0; i<FS_SIZE; i++) {
-    //  inode type field
-    write (fd, (void*)zero, 1);  
-    //  inode size field
-    write (fd, (void*)zero, 2);  
-    //  inode block field
-    write (fd, (void*)zero, 2);  
-    for (j=0; j<10; j++) {
-      //  inode data block ptr
-      write (fd, (void*)zero, 2);  
-    }
-  }
+//  for (i=0; i<FS_SIZE; i++) {
+//    //  inode type field
+//    write (fd, (void*)zero, 1);  
+//    //  inode size field
+//    write (fd, (void*)zero, 2);  
+//    //  inode block field
+//    write (fd, (void*)zero, 2);  
+//    for (j=0; j<10; j++) {
+//      //  inode data block ptr
+//      write (fd, (void*)zero, 2);  
+//    }
+//  }
 
-  BLOCK_HEAD = (int)lseek (fd, 0, SEEK_END);
+//  BLOCK_HEAD = (int)lseek (fd, 0, SEEK_END);
   //  Write FS_SIZE data blocks in the file
-  for (i=0; i<FS_SIZE; i++) {
-    //  Write a single data block
-    for (j=0; j<BLK_SIZE; j++)
-      //  Each data block is 4096 bytes
-      write (fd, (void*)zero, 1);
-  }
+//  for (i=0; i<FS_SIZE; i++) {
+//    //  Write a single data block
+//    for (j=0; j<BLK_SIZE; j++)
+//      //  Each data block is 4096 bytes
+//      write (fd, (void*)zero, 1);
+//  }
 
-  INODE_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
+//  INODE_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
   //  Write FS_SIZE inode bitmap in the file
   for (i=0; i<FS_SIZE; i++) {
     write (fd, (void*)zero, 1);
   }
 
-  BLOCK_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
+//  BLOCK_BMAP_HEAD = (int)lseek (fd, 0, SEEK_END);
   //  Write FS_SIZE block bitmap in the file
-  for (i=0; i<FS_SIZE; i++) {
-    write (fd, (void*)zero, 1);
-  }
+//  for (i=0; i<FS_SIZE; i++) {
+//    write (fd, (void*)zero, 1);
+//  }
 
 #ifdef  DEBUG
   printf ("SEEK %d\n", INODE_HEAD);
@@ -162,6 +164,10 @@ int SFS_Init (char *image_name)
 
   lseek (fd, INODE_HEAD, SEEK_SET);
   write (fd, (void*)inode, INODE_SIZE);
+
+#ifdef  DEBUG
+  printf ("init finished.\n");
+#endif
 
   return  fd;
 }
@@ -1026,7 +1032,7 @@ int main(int argc, char *argv[])
         int val = SFS_Init (argv[2]);
 
         char  reply[BUFFER_SIZE];
-        sprintf (reply, "%d", val);
+        sprintf (reply, "%d", fd);
 
         fsync (fd);
         rc = UDP_Write(sd, &s, reply, BUFFER_SIZE); //write message buffer to port sd
